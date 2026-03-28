@@ -77,6 +77,13 @@ export type ProductListResponse = {
   items: ProductListItem[];
 };
 
+export type ProductMutationResponse = {
+  product_id: string;
+  status: string;
+  message: string;
+  updated_at: string;
+};
+
 export type InventoryItem = {
   product_id: string;
   sku: string;
@@ -182,6 +189,36 @@ export async function getProducts(token: string): Promise<ProductListResponse> {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+  });
+}
+
+export async function updateProductPrice(
+  token: string,
+  productId: string,
+  payload: { price_amount: string; price_currency: string },
+): Promise<ProductMutationResponse> {
+  return apiRequest<ProductMutationResponse>(`/products/${productId}/price`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateProductStock(
+  token: string,
+  productId: string,
+  payload: { quantity: number },
+): Promise<ProductMutationResponse> {
+  return apiRequest<ProductMutationResponse>(`/products/${productId}/stock`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   });
 }
 
