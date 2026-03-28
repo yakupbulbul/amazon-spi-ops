@@ -32,3 +32,14 @@ class JobStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
+
+class CatalogImportStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class ProductSource(StrEnum):
+    SAMPLE = "sample"
+    AMAZON_LISTING = "amazon_listing"

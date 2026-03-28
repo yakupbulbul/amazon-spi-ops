@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.entities import InventoryAlert, InventorySnapshot, Product, User
-from app.models.enums import AlertSeverity, InventoryAlertStatus, UserRole
+from app.models.enums import AlertSeverity, InventoryAlertStatus, ProductSource, UserRole
 
 logger = logging.getLogger(__name__)
 SAMPLE_SKUS = {"TRAVEL-MUG-20OZ", "STANDING-DESK-MAT", "LED-DESK-LAMP"}
@@ -47,6 +47,7 @@ def bootstrap_sample_catalog() -> None:
                 asin="B0AMZNSKU01",
                 title="Insulated Travel Mug 20oz",
                 brand="Northstar Goods",
+                source=ProductSource.SAMPLE.value,
                 marketplace_id=settings.marketplace_id,
                 price_amount=Decimal("24.99"),
                 price_currency="USD",
@@ -58,6 +59,7 @@ def bootstrap_sample_catalog() -> None:
                 asin="B0AMZNSKU02",
                 title="Ergonomic Standing Desk Mat",
                 brand="Northstar Goods",
+                source=ProductSource.SAMPLE.value,
                 marketplace_id=settings.marketplace_id,
                 price_amount=Decimal("49.00"),
                 price_currency="USD",
@@ -69,6 +71,7 @@ def bootstrap_sample_catalog() -> None:
                 asin="B0AMZNSKU03",
                 title="Adjustable LED Desk Lamp",
                 brand="Northstar Goods",
+                source=ProductSource.SAMPLE.value,
                 marketplace_id=settings.marketplace_id,
                 price_amount=Decimal("39.50"),
                 price_currency="USD",

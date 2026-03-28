@@ -3,6 +3,7 @@ from app.models.entities import (
     AplusDraft,
     AplusPublishJob,
     AppSetting,
+    CatalogImportJob,
     EventLog,
     InventoryAlert,
     InventorySnapshot,
@@ -18,6 +19,7 @@ __all__ = [
     "AplusPublishJob",
     "AppSetting",
     "Base",
+    "CatalogImportJob",
     "EventLog",
     "InventoryAlert",
     "InventorySnapshot",
@@ -27,4 +29,3 @@ __all__ = [
     "StockChangeLog",
     "User",
 ]
-
