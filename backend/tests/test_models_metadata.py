@@ -6,6 +6,7 @@ def test_expected_tables_are_registered() -> None:
         "app_settings",
         "aplus_drafts",
         "aplus_publish_jobs",
+        "catalog_import_jobs",
         "event_logs",
         "inventory_alerts",
         "inventory_snapshots",

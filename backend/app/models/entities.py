@@ -10,7 +10,15 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.models.enums import AlertSeverity, DraftStatus, InventoryAlertStatus, JobStatus, UserRole
+from app.models.enums import (
+    AlertSeverity,
+    CatalogImportStatus,
+    DraftStatus,
+    InventoryAlertStatus,
+    JobStatus,
+    ProductSource,
+    UserRole,
+)
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -32,6 +40,9 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     asin: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     brand: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(
+        String(32), default=ProductSource.SAMPLE.value, nullable=False, index=True
+    )
     marketplace_id: Mapped[str] = mapped_column(String(64), nullable=False)
     price_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     price_currency: Mapped[str | None] = mapped_column(String(8))
@@ -199,3 +210,26 @@ class AppSetting(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     updated_by: Mapped[User | None] = relationship()
 
+
+class CatalogImportJob(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "catalog_import_jobs"
+
+    status: Mapped[str] = mapped_column(
+        String(32), default=CatalogImportStatus.PENDING.value, nullable=False, index=True
+    )
+    source: Mapped[str] = mapped_column(String(64), default="amazon_sp_api", nullable=False)
+    marketplace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_expected: Mapped[int | None] = mapped_column(Integer)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[str | None] = mapped_column(String(1024))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    created_by: Mapped[User | None] = relationship()
