@@ -1,28 +1,49 @@
-const summaryCards = [
-  { label: "Tracked products", value: "0", note: "Products will appear after catalog sync" },
-  { label: "Low stock products", value: "0", note: "Threshold engine starts in Phase 3" },
-  { label: "Recent sales events", value: "0", note: "Slack and order signals land in Phase 6" },
-  { label: "Pending A+ drafts", value: "0", note: "AI draft workflow lands in Phase 5" },
-];
+import { useEffect, useState } from "react";
 
-const recentActivity = [
-  "Backend health status is connected to the dashboard shell.",
-  "Route scaffolding is ready for product, inventory, and notification features.",
-  "Docker, FastAPI, React, Redis, PostgreSQL, and Nginx are now part of the runtime shape.",
-];
-
-const alertCards = [
-  {
-    title: "Inventory alerts",
-    description: "Threshold rules and SKU alert badges will surface here once inventory sync is live.",
-  },
-  {
-    title: "Slack delivery status",
-    description: "Webhook checks and notification history will be available in the next notification phase.",
-  },
-];
+import { useAuth } from "../hooks/useAuth";
+import {
+  getDashboardSummary,
+  type DashboardSummaryResponse,
+} from "../lib/api";
 
 export function DashboardPage() {
+  const { token } = useAuth();
+  const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSummary() {
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await getDashboardSummary(token);
+        if (!cancelled) {
+          setSummary(response);
+          setError(null);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load dashboard");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   return (
     <div className="space-y-8">
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
@@ -40,17 +61,31 @@ export function DashboardPage() {
         <div className="rounded-[2rem] border border-white/10 bg-slate-950/50 p-6">
           <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Recent activity</p>
           <div className="mt-5 space-y-4">
-            {recentActivity.map((item) => (
-              <div key={item} className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-sm leading-6 text-slate-200">{item}</p>
+            {isLoading ? (
+              <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
+                Loading dashboard activity...
               </div>
-            ))}
+            ) : error ? (
+              <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                {error}
+              </div>
+            ) : (
+              summary?.recent_activity.map((item) => (
+                <div
+                  key={`${item.title}-${item.occurred_at}`}
+                  className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4"
+                >
+                  <p className="text-sm font-medium text-white">{item.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">{item.detail}</p>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {summaryCards.map((card) => (
+        {(summary?.metrics ?? []).map((card) => (
           <article
             key={card.label}
             className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5"
@@ -60,21 +95,43 @@ export function DashboardPage() {
             <p className="mt-3 text-sm leading-6 text-slate-500">{card.note}</p>
           </article>
         ))}
+        {isLoading
+          ? Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-40 animate-pulse rounded-[1.75rem] border border-white/10 bg-white/[0.04]"
+              />
+            ))
+          : null}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
-        {alertCards.map((card) => (
-          <article
-            key={card.title}
-            className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-6"
-          >
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Coming online</p>
-            <h3 className="mt-3 text-2xl font-semibold text-white">{card.title}</h3>
-            <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">{card.description}</p>
-          </article>
-        ))}
+        <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-6">
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Inventory alerts</p>
+          <div className="mt-5 space-y-4">
+            {summary?.inventory_alerts.map((item) => (
+              <div key={`${item.title}-${item.occurred_at}`} className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-sm font-medium text-white">{item.title}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-6">
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Slack delivery</p>
+          <div className="mt-5 space-y-4">
+            {summary?.slack_delivery.map((item) => (
+              <div key={`${item.notification_type}-${item.created_at}`} className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-sm font-medium capitalize text-white">
+                  {item.notification_type.replaceAll("_", " ")}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">{item.message_preview}</p>
+              </div>
+            ))}
+          </div>
+        </article>
       </section>
     </div>
   );
 }
-
