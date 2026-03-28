@@ -72,8 +72,9 @@ npm install
 npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
-The frontend expects the backend at `http://localhost:8000/api` during local development. In
-Docker, `VITE_API_BASE_URL` is set to `/api` and routed through Nginx.
+The frontend uses same-origin `/api` requests by default. For local Vite development, the dev
+server proxies `/api` to `http://localhost:8000`, so the browser does not need CORS enabled. In
+other environments, set `VITE_API_BASE_URL` only if you need to override that default.
 
 ## Quality Checks
 
