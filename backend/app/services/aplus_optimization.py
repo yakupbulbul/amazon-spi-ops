@@ -41,6 +41,15 @@ _BENEFIT_TERMS: tuple[str, ...] = (
     "reduziert",
     "erleichtert",
     "verbessert",
+    "easier",
+    "clearer",
+    "confidence",
+    "comfortable",
+    "dependable",
+    "protects",
+    "fits",
+    "built to",
+    "designed to",
 )
 
 _USAGE_TERMS: tuple[str, ...] = (
@@ -174,13 +183,21 @@ def build_aplus_optimization_report(*, draft_payload: AplusDraftPayload) -> Aplu
             message="Add a hero section with a concise value proposition that leads the shopper into the rest of the draft.",
         )
 
-    if len(feature_modules) < 3:
-        missing_sections.append("3-4 feature blocks")
+    if len(feature_modules) < 2:
+        missing_sections.append("Feature blocks")
         add_issue(
             severity="critical",
             section="Feature blocks",
             title="Add more feature depth",
             message="Expand to at least three feature blocks so the draft covers multiple shopper benefits instead of one narrow angle.",
+        )
+    elif len(feature_modules) < 3 and len(draft_payload.key_features) < 4:
+        missing_sections.append("Feature depth")
+        add_issue(
+            severity="warning",
+            section="Feature blocks",
+            title="Broaden the benefit story",
+            message="Add one more feature angle or expand the key features so the draft covers three to four convincing benefit points.",
         )
     elif len(feature_modules) > 4:
         add_issue(
@@ -220,7 +237,8 @@ def build_aplus_optimization_report(*, draft_payload: AplusDraftPayload) -> Aplu
     structure_score = _bounded_score(
         100
         - (20 if hero_module is None else 0)
-        - (25 if len(feature_modules) < 3 else 0)
+        - (25 if len(feature_modules) < 2 else 0)
+        - (10 if len(feature_modules) < 3 and len(draft_payload.key_features) < 4 else 0)
         - (10 if len(feature_modules) > 4 else 0)
         - (15 if comparison_module is None else 0)
         - (10 if not _has_usage_context(draft_payload) else 0)
@@ -231,7 +249,7 @@ def build_aplus_optimization_report(*, draft_payload: AplusDraftPayload) -> Aplu
     all_copy = _collect_copy(draft_payload)
     repeated_sections = _find_repeated_sections(all_copy)
     if repeated_sections:
-        clarity_penalty += 18
+        clarity_penalty += 10
         add_issue(
             severity="warning",
             section="Cross-section copy",
@@ -245,7 +263,7 @@ def build_aplus_optimization_report(*, draft_payload: AplusDraftPayload) -> Aplu
         if _is_heading_weak(normalize_text(text))
     ]
     if weak_headings:
-        clarity_penalty += 14
+        clarity_penalty += 10
         add_issue(
             severity="warning",
             section="Headlines",
@@ -256,10 +274,10 @@ def build_aplus_optimization_report(*, draft_payload: AplusDraftPayload) -> Aplu
     dense_sections = [
         label
         for label, text in all_copy
-        if label.startswith("Module") and len(text.strip()) > 320
+        if label.startswith("Module") and len(text.strip()) > 380
     ]
     if dense_sections:
-        clarity_penalty += 12
+        clarity_penalty += 8
         add_issue(
             severity="warning",
             section="Module copy",
@@ -283,7 +301,7 @@ def build_aplus_optimization_report(*, draft_payload: AplusDraftPayload) -> Aplu
         label for label, text in all_copy if any(term in normalize_text(text) for term in _GENERIC_PHRASES)
     ]
     if generic_hits:
-        differentiation_penalty += 18
+        differentiation_penalty += 24
         add_issue(
             severity="warning",
             section="Differentiation",
@@ -396,6 +414,8 @@ def _heading_entries(draft_payload: AplusDraftPayload) -> list[tuple[str, str]]:
 def _find_repeated_sections(entries: list[tuple[str, str]]) -> list[str]:
     duplicates: dict[str, list[str]] = {}
     for label, text in entries:
+        if "bullet" in label.lower() or "key feature" in label.lower():
+            continue
         normalized = normalize_text(text)
         if len(normalized) < 24:
             continue
@@ -420,7 +440,7 @@ def _has_benefit_driven_copy(draft_payload: AplusDraftPayload) -> bool:
         for entry in normalized_entries
         if any(term in entry for term in _BENEFIT_TERMS)
     )
-    return hit_count >= 4
+    return hit_count >= 3
 
 
 def _has_technical_detail(draft_payload: AplusDraftPayload) -> bool:
@@ -434,8 +454,15 @@ def _answers_customer_questions(draft_payload: AplusDraftPayload) -> bool:
 
 
 def _has_differentiation_signals(draft_payload: AplusDraftPayload) -> bool:
-    normalized_entries = [normalize_text(text) for _, text in _collect_copy(draft_payload)]
-    return any(any(term in entry for term in _DIFFERENTIATION_TERMS) for entry in normalized_entries)
+    normalized_entries = [
+        normalize_text(text)
+        for label, text in _collect_copy(draft_payload)
+        if "image brief" not in label.lower()
+    ]
+    hit_count = sum(
+        1 for entry in normalized_entries if any(term in entry for term in _DIFFERENTIATION_TERMS)
+    )
+    return hit_count >= 2
 
 
 def _comparison_is_meaningful(module: object) -> bool:
@@ -504,7 +531,7 @@ def _score_images(
 
 def _is_heading_weak(value: str) -> bool:
     words = [word for word in value.split(" ") if word]
-    if len(words) < 2 or len(words) > 8:
+    if len(words) < 2 or len(words) > 12:
         return True
     return any(phrase in value for phrase in _GENERIC_PHRASES)
 
