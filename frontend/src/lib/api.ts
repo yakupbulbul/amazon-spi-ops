@@ -159,6 +159,8 @@ export type AplusDraftPayload = {
   compliance_notes: string[];
 };
 
+export type AplusLanguage = "de-DE" | "en-US" | "en-GB" | "fr-FR" | "it-IT" | "es-ES";
+
 export type AplusDraftResponse = {
   id: string;
   product_id: string;
@@ -169,6 +171,9 @@ export type AplusDraftResponse = {
   status: string;
   brand_tone: string | null;
   positioning: string | null;
+  source_language: AplusLanguage;
+  target_language: AplusLanguage;
+  auto_translate: boolean;
   draft_payload: AplusDraftPayload;
   validated_payload: AplusDraftPayload | null;
   created_at: string;
@@ -345,7 +350,14 @@ export async function getAplusDrafts(token: string): Promise<AplusDraftListRespo
 
 export async function generateAplusDraft(
   token: string,
-  payload: { product_id: string; brand_tone?: string; positioning?: string },
+  payload: {
+    product_id: string;
+    brand_tone?: string;
+    positioning?: string;
+    source_language: AplusLanguage;
+    target_language?: AplusLanguage;
+    auto_translate: boolean;
+  },
 ): Promise<AplusDraftResponse> {
   return apiRequest<AplusDraftResponse>("/aplus/generate", {
     method: "POST",

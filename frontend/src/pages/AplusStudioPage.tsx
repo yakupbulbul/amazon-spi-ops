@@ -10,6 +10,14 @@ import {
 } from "lucide-react";
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 
+import { DraftMetadataBar } from "../components/aplus/DraftMetadataBar";
+import { LanguageSelector } from "../components/aplus/LanguageSelector";
+import { ProductCombobox } from "../components/aplus/ProductCombobox";
+import { TranslationToggle } from "../components/aplus/TranslationToggle";
+import {
+  formatLanguageLabel,
+  getDefaultTargetLanguage,
+} from "../components/aplus/languages";
 import { useAuth } from "../hooks/useAuth";
 import {
   generateAplusDraft,
@@ -18,6 +26,7 @@ import {
   publishAplusDraft,
   type AplusDraftPayload,
   type AplusDraftResponse,
+  type AplusLanguage,
   type AplusModulePayload,
   type AplusPublishResponse,
   type ProductListItem,
@@ -102,6 +111,9 @@ export function AplusStudioPage() {
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [brandTone, setBrandTone] = useState("");
   const [positioning, setPositioning] = useState("");
+  const [sourceLanguage, setSourceLanguage] = useState<AplusLanguage>("de-DE");
+  const [targetLanguage, setTargetLanguage] = useState<AplusLanguage>("de-DE");
+  const [autoTranslate, setAutoTranslate] = useState(false);
   const [editorDraft, setEditorDraft] = useState<AplusDraftPayload | null>(null);
   const [publishResult, setPublishResult] = useState<AplusPublishResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -116,6 +128,10 @@ export function AplusStudioPage() {
     products.find((product) => product.id === selectedProductId) ??
     products.find((product) => product.id === selectedDraft?.product_id) ??
     null;
+
+  const generationSourceLanguage = selectedDraft?.source_language ?? sourceLanguage;
+  const generationTargetLanguage = selectedDraft?.target_language ?? targetLanguage;
+  const generationAutoTranslate = selectedDraft?.auto_translate ?? autoTranslate;
 
   const loadStudioData = useEffectEvent(async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
     if (!token) {
@@ -148,6 +164,9 @@ export function AplusStudioPage() {
         setSelectedProductId(newestDraft.product_id);
         setBrandTone(newestDraft.brand_tone ?? "");
         setPositioning(newestDraft.positioning ?? "");
+        setSourceLanguage(newestDraft.source_language);
+        setTargetLanguage(newestDraft.target_language);
+        setAutoTranslate(newestDraft.auto_translate);
         setEditorDraft(getEditablePayload(newestDraft));
       } else if (!draftsResponse.items.length && !editorDraft) {
         setEditorDraft(buildEmptyDraft(productsResponse.items[0] ?? null));
@@ -192,6 +211,9 @@ export function AplusStudioPage() {
     setSelectedProductId(draft.product_id);
     setBrandTone(draft.brand_tone ?? "");
     setPositioning(draft.positioning ?? "");
+    setSourceLanguage(draft.source_language);
+    setTargetLanguage(draft.target_language);
+    setAutoTranslate(draft.auto_translate);
     setEditorDraft(getEditablePayload(draft));
     setPublishResult(null);
     setError(null);
@@ -200,6 +222,12 @@ export function AplusStudioPage() {
   async function handleGenerate() {
     if (!token || !selectedProductId) {
       setError("Select a product before generating an A+ draft.");
+      return;
+    }
+
+    const effectiveTargetLanguage = autoTranslate ? targetLanguage : sourceLanguage;
+    if (autoTranslate && sourceLanguage === effectiveTargetLanguage) {
+      setError("Choose a different target language when auto-translate is enabled.");
       return;
     }
 
@@ -213,11 +241,18 @@ export function AplusStudioPage() {
         product_id: selectedProductId,
         brand_tone: brandTone || undefined,
         positioning: positioning || undefined,
+        source_language: sourceLanguage,
+        target_language: effectiveTargetLanguage,
+        auto_translate: autoTranslate,
       });
 
       upsertDraft(draft);
       selectDraft(draft);
-      setStatusMessage("Draft generated. Review and refine the copy before validation.");
+      setStatusMessage(
+        autoTranslate
+          ? `Draft generated in ${formatLanguageLabel(sourceLanguage)} and translated into ${formatLanguageLabel(effectiveTargetLanguage)}.`
+          : `Draft generated in ${formatLanguageLabel(sourceLanguage)}. Review and refine it before validation.`,
+      );
     } catch (generateError) {
       setError(
         generateError instanceof Error ? generateError.message : "Unable to generate A+ draft.",
@@ -288,6 +323,30 @@ export function AplusStudioPage() {
     setEditorDraft(buildEmptyDraft(nextProduct));
   }
 
+  function handleSourceLanguageChange(nextLanguage: AplusLanguage) {
+    setSourceLanguage(nextLanguage);
+    if (!autoTranslate) {
+      setTargetLanguage(nextLanguage);
+      return;
+    }
+
+    if (targetLanguage === nextLanguage) {
+      setTargetLanguage(getDefaultTargetLanguage(nextLanguage));
+    }
+  }
+
+  function handleAutoTranslateChange(nextValue: boolean) {
+    setAutoTranslate(nextValue);
+    if (!nextValue) {
+      setTargetLanguage(sourceLanguage);
+      return;
+    }
+
+    if (targetLanguage === sourceLanguage) {
+      setTargetLanguage(getDefaultTargetLanguage(sourceLanguage));
+    }
+  }
+
   function updateModule(
     index: number,
     patch: Partial<AplusModulePayload>,
@@ -349,11 +408,11 @@ export function AplusStudioPage() {
         <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,_rgba(14,165,233,0.18),_rgba(15,23,42,0.94)_38%,_rgba(2,6,23,1)_100%)] p-6 shadow-2xl shadow-black/30 sm:p-8">
           <p className="text-xs uppercase tracking-[0.32em] text-sky-100/70">A+ Content Studio</p>
           <h2 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
-            Generate structured A+ drafts, refine them in place, and preview the Amazon-ready payload.
+            Generate multilingual A+ drafts with faster product discovery and clearer language control.
           </h2>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-            This workflow pulls live catalog products, sends a structured prompt to OpenAI, validates
-            the resulting JSON, and prepares a publish payload without exposing secrets to the client.
+            Search the product catalog instantly, choose the output language, optionally translate
+            the structured draft into another locale, and keep the editor and publish preview aligned.
           </p>
         </div>
 
@@ -364,12 +423,14 @@ export function AplusStudioPage() {
             <p className="mt-3 text-sm leading-6 text-slate-500">Stored A+ concepts ready for editorial review.</p>
           </article>
           <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-slate-400">Selected product</p>
+            <p className="text-sm text-slate-400">Current output language</p>
             <p className="mt-4 text-2xl font-semibold text-white">
-              {selectedProduct?.sku ?? "Choose a product"}
+              {formatLanguageLabel(generationTargetLanguage)}
             </p>
             <p className="mt-3 text-sm leading-6 text-slate-500">
-              {selectedProduct ? selectedProduct.title : "Start by choosing a live Amazon listing."}
+              {generationAutoTranslate
+                ? `Generated in ${formatLanguageLabel(generationSourceLanguage)} and translated automatically.`
+                : "Generated directly in the selected language."}
             </p>
           </article>
         </div>
@@ -389,7 +450,7 @@ export function AplusStudioPage() {
         </section>
       ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <section className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <div className="space-y-6">
           <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
             <div className="flex items-center gap-3">
@@ -401,21 +462,38 @@ export function AplusStudioPage() {
             </div>
 
             <div className="mt-6 space-y-4">
-              <label className="block space-y-2">
-                <span className="text-sm text-slate-300">Product</span>
-                <select
-                  value={selectedProductId}
-                  onChange={(event) => handleProductChange(event.target.value)}
-                  className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
-                >
-                  {products.length ? null : <option value="">No products available</option>}
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id} className="bg-slate-950">
-                      {product.sku} · {product.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <ProductCombobox
+                products={products}
+                selectedProduct={selectedProduct}
+                onSelect={(product) => handleProductChange(product.id)}
+                disabled={isLoading || isGenerating}
+              />
+
+              <LanguageSelector
+                label="Source language"
+                value={sourceLanguage}
+                onChange={handleSourceLanguageChange}
+                helperText="This is the language used for the original structured generation prompt."
+                disabled={isGenerating}
+              />
+
+              <TranslationToggle
+                autoTranslate={autoTranslate}
+                sourceLanguage={sourceLanguage}
+                targetLanguage={targetLanguage}
+                onToggle={handleAutoTranslateChange}
+                onTargetLanguageChange={setTargetLanguage}
+                disabled={isGenerating}
+              />
+
+              <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] px-4 py-4 text-sm leading-6 text-slate-300">
+                <p className="font-medium text-white">What happens next</p>
+                <p className="mt-2">
+                  {autoTranslate
+                    ? `The base A+ draft will be generated in ${formatLanguageLabel(sourceLanguage)} and then translated into ${formatLanguageLabel(targetLanguage)} while preserving the JSON structure.`
+                    : `The A+ draft will be generated directly in ${formatLanguageLabel(sourceLanguage)}.`}
+                </p>
+              </div>
 
               <label className="block space-y-2">
                 <span className="text-sm text-slate-300">Brand tone</span>
@@ -447,7 +525,15 @@ export function AplusStudioPage() {
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[1.25rem] bg-amber-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Sparkles className="h-4 w-4" />
-              <span>{isGenerating ? "Generating draft..." : "Generate A+ draft"}</span>
+              <span>
+                {isGenerating
+                  ? autoTranslate
+                    ? "Generating and translating draft..."
+                    : "Generating draft..."
+                  : autoTranslate
+                    ? "Generate and translate A+ draft"
+                    : "Generate A+ draft"}
+              </span>
             </button>
           </article>
 
@@ -489,9 +575,24 @@ export function AplusStudioPage() {
                           {draft.product_sku} · {draft.status.replaceAll("_", " ")}
                         </p>
                       </div>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-300">
+                          {draft.marketplace_id}
+                        </span>
+                        <span className="rounded-full border border-sky-300/20 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100">
+                          {draft.auto_translate ? "Translated" : "Original"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-300">
-                        {draft.marketplace_id}
+                        {formatLanguageLabel(draft.source_language)}
                       </span>
+                      {draft.auto_translate ? (
+                        <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-300">
+                          {formatLanguageLabel(draft.target_language)}
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
                       Updated {formatTimestamp(draft.updated_at)}
@@ -535,6 +636,17 @@ export function AplusStudioPage() {
                   {isPublishing ? "Preparing..." : "Prepare publish payload"}
                 </button>
               </div>
+            </div>
+
+            <div className="mt-6">
+              <DraftMetadataBar
+                draft={selectedDraft}
+                product={selectedProduct}
+                sourceLanguage={generationSourceLanguage}
+                targetLanguage={generationTargetLanguage}
+                autoTranslate={generationAutoTranslate}
+                formatTimestamp={formatTimestamp}
+              />
             </div>
 
             {!editorDraft ? (
@@ -777,7 +889,9 @@ export function AplusStudioPage() {
                   </div>
 
                   <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Key features</p>
+                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                      Key features in {formatLanguageLabel(generationTargetLanguage)}
+                    </p>
                     <div className="mt-4 space-y-3">
                       {editorDraft.key_features.map((feature) => (
                         <div key={feature} className="rounded-[1.25rem] bg-slate-900/70 px-4 py-3 text-sm text-slate-200">
