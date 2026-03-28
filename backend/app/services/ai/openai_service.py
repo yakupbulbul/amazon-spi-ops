@@ -61,7 +61,13 @@ class OpenAiAplusService:
                 },
                 json=payload,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise ValueError(
+                    "OpenAI request failed: "
+                    f"{response.status_code} {response.text}"
+                ) from exc
 
         body = response.json()
         message = body["choices"][0]["message"]
