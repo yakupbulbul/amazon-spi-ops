@@ -380,6 +380,16 @@ class OpenAiAplusService:
         target_language: str,
     ) -> AplusDraftPayload:
         payload = draft_payload.model_dump(mode="json")
+        non_translatable_keys = {
+            "module_type",
+            "image_mode",
+            "generated_image_url",
+            "uploaded_image_url",
+            "selected_asset_id",
+            "reference_asset_ids",
+            "image_status",
+            "image_error_message",
+        }
 
         def translate_text(value: Any) -> Any:
             if isinstance(value, str):
@@ -389,7 +399,7 @@ class OpenAiAplusService:
             if isinstance(value, dict):
                 translated: dict[str, Any] = {}
                 for key, nested_value in value.items():
-                    if key == "module_type":
+                    if key in non_translatable_keys:
                         translated[key] = nested_value
                     else:
                         translated[key] = translate_text(nested_value)
