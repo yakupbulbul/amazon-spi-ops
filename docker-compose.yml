@@ -82,11 +82,10 @@ services:
       backend:
         condition: service_started
     ports:
-      - "80:80"
+      - "${NGINX_PORT:-8080}:80"
     volumes:
       - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
   postgres-data:
   redis-data:
-
