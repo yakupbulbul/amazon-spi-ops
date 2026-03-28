@@ -49,6 +49,29 @@ class AmazonSpApiService:
         adapter = self.live_adapter if self._has_core_sp_api_credentials() else self.mock_adapter
         return adapter.get_catalog_item(asin, marketplace_id=marketplace_id)
 
+    def search_listings_items(
+        self,
+        *,
+        marketplace_id: str | None = None,
+        next_token: str | None = None,
+        page_size: int = 50,
+    ) -> dict[str, Any]:
+        if self._has_listing_credentials():
+            return self.live_adapter.search_listings_items(
+                marketplace_id=marketplace_id,
+                next_token=next_token,
+                page_size=page_size,
+            )
+        if self._has_core_sp_api_credentials():
+            raise AmazonAuthorizationError(
+                "SELLER_ID is required for live listing imports. Configure it before importing Amazon products."
+            )
+        return self.mock_adapter.search_listings_items(
+            marketplace_id=marketplace_id,
+            next_token=next_token,
+            page_size=page_size,
+        )
+
     def get_inventory_summaries(
         self,
         *,

@@ -16,13 +16,15 @@ from app.models.entities import (
     User,
 )
 from app.models.enums import AlertSeverity, InventoryAlertStatus, JobStatus
-from app.schemas.product import ProductMutationResponse
-from app.services.amazon.service import AmazonSpApiService
 from app.schemas.product import (
+    CatalogImportJobResponse,
     ProductInventorySummaryResponse,
     ProductListItemResponse,
     ProductListResponse,
+    ProductMutationResponse,
 )
+from app.services.amazon.service import AmazonSpApiService
+from app.services.catalog_import_service import CatalogImportService
 
 
 class ProductService:
@@ -60,6 +62,7 @@ class ProductService:
                     asin=product.asin,
                     title=product.title,
                     brand=product.brand,
+                    source=product.source,
                     marketplace_id=product.marketplace_id,
                     price_amount=product.price_amount,
                     price_currency=product.price_currency,
@@ -79,6 +82,14 @@ class ProductService:
                 for product, snapshot in rows
             ]
         )
+
+    def create_import_job(self, *, requested_by: User) -> CatalogImportJobResponse:
+        return CatalogImportService(self.db_session, self.amazon_service).create_import_job(
+            created_by=requested_by
+        )
+
+    def get_latest_import_job(self) -> CatalogImportJobResponse | None:
+        return CatalogImportService(self.db_session, self.amazon_service).get_latest_job()
 
     def update_price(
         self,

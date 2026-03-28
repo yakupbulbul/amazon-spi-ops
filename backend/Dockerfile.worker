@@ -15,5 +15,4 @@ COPY app ./app
 RUN pip install --upgrade pip \
     && pip install -e .
 
-CMD ["python", "-m", "app.workers.main"]
-
+CMD ["dramatiq", "app.workers.main", "--processes", "1", "--threads", "4"]

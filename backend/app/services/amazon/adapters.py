@@ -10,6 +10,16 @@ from app.services.amazon.client import AmazonSpApiClient
 
 class AmazonSpApiAdapter(ABC):
     @abstractmethod
+    def search_listings_items(
+        self,
+        *,
+        marketplace_id: str | None = None,
+        next_token: str | None = None,
+        page_size: int = 50,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_catalog_item(self, asin: str, *, marketplace_id: str | None = None) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -62,6 +72,29 @@ class LiveAmazonSpApiAdapter(AmazonSpApiAdapter):
     def __init__(self, client: AmazonSpApiClient, settings: Settings) -> None:
         self.client = client
         self.settings = settings
+
+    def search_listings_items(
+        self,
+        *,
+        marketplace_id: str | None = None,
+        next_token: str | None = None,
+        page_size: int = 50,
+    ) -> dict[str, Any]:
+        resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
+        params: dict[str, Any] = {
+            "marketplaceIds": resolved_marketplace_id,
+            "pageSize": page_size,
+            "includedData": "summaries,attributes,offers,fulfillmentAvailability",
+        }
+        if next_token:
+            params["nextToken"] = next_token
+
+        return self.client.request(
+            "GET",
+            f"/listings/2021-08-01/items/{self.settings.seller_id}",
+            marketplace_id=resolved_marketplace_id,
+            params=params,
+        )
 
     def get_catalog_item(self, asin: str, *, marketplace_id: str | None = None) -> dict[str, Any]:
         resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
@@ -183,6 +216,65 @@ class LiveAmazonSpApiAdapter(AmazonSpApiAdapter):
 class MockAmazonSpApiAdapter(AmazonSpApiAdapter):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+
+    def search_listings_items(
+        self,
+        *,
+        marketplace_id: str | None = None,
+        next_token: str | None = None,
+        page_size: int = 50,
+    ) -> dict[str, Any]:
+        resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
+        items = [
+            {
+                "sku": "MOCK-AMZ-001",
+                "summaries": [
+                    {
+                        "marketplaceId": resolved_marketplace_id,
+                        "asin": "B0MOCKSKU01",
+                        "itemName": "Mock Amazon Imported Product",
+                        "status": ["BUYABLE"],
+                    }
+                ],
+                "attributes": {
+                    "brand": [{"value": "Mock Brand"}],
+                    "fulfillment_availability": [
+                        {"fulfillment_channel_code": "DEFAULT", "quantity": 12}
+                    ],
+                },
+                "offers": [
+                    {"price": {"currency": "EUR", "currencyCode": "EUR", "amount": "19.99"}}
+                ],
+                "fulfillmentAvailability": [{"fulfillmentChannelCode": "DEFAULT", "quantity": 12}],
+            },
+            {
+                "sku": "MOCK-AMZ-002",
+                "summaries": [
+                    {
+                        "marketplaceId": resolved_marketplace_id,
+                        "asin": "B0MOCKSKU02",
+                        "itemName": "Mock Imported Accessory",
+                        "status": ["DISCOVERABLE"],
+                    }
+                ],
+                "attributes": {
+                    "manufacturer": [{"value": "Mock Manufacturer"}],
+                    "fulfillment_availability": [
+                        {"fulfillment_channel_code": "DEFAULT", "quantity": 4}
+                    ],
+                },
+                "offers": [
+                    {"price": {"currency": "EUR", "currencyCode": "EUR", "amount": "9.49"}}
+                ],
+                "fulfillmentAvailability": [{"fulfillmentChannelCode": "DEFAULT", "quantity": 4}],
+            },
+        ]
+        return {
+            "mock": True,
+            "numberOfResults": len(items),
+            "pagination": {"nextToken": None if next_token else ""},
+            "items": items[:page_size],
+        }
 
     def get_catalog_item(self, asin: str, *, marketplace_id: str | None = None) -> dict[str, Any]:
         return {

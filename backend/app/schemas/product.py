@@ -19,6 +19,7 @@ class ProductListItemResponse(BaseModel):
     asin: str
     title: str
     brand: str | None
+    source: str
     marketplace_id: str
     price_amount: Decimal | None
     price_currency: str | None
@@ -45,3 +46,20 @@ class ProductMutationResponse(BaseModel):
     status: str
     message: str
     updated_at: datetime
+
+
+class CatalogImportJobResponse(BaseModel):
+    id: str
+    status: str
+    source: str
+    marketplace_id: str
+    created_count: int
+    updated_count: int
+    skipped_count: int
+    error_count: int
+    processed_count: int
+    total_expected: int | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    error_message: str | None
+    created_at: datetime
