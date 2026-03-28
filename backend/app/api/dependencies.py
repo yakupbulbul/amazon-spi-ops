@@ -8,7 +8,9 @@ from app.core.config import settings
 from app.core.database import get_db_session
 from app.models.entities import User
 from app.services.ai.openai_service import OpenAiAplusService
+from app.services.ai.image_provider import OpenAiImageProvider
 from app.services.aplus_asset_service import AplusAssetService
+from app.services.aplus_image_service import AplusImageService
 from app.services.aplus_service import AplusService
 from app.services.amazon.service import AmazonSpApiService
 from app.services.auth_service import AuthService
@@ -43,6 +45,10 @@ def get_openai_aplus_service() -> OpenAiAplusService:
     return OpenAiAplusService()
 
 
+def get_openai_image_provider() -> OpenAiImageProvider:
+    return OpenAiImageProvider()
+
+
 def get_media_storage_service() -> MediaStorageService:
     return MediaStorageService()
 
@@ -64,6 +70,14 @@ def get_aplus_asset_service(
         storage_service,
         max_upload_bytes=settings.aplus_upload_max_bytes,
     )
+
+
+def get_aplus_image_service(
+    db_session: Session = Depends(get_db_session),
+    image_provider: OpenAiImageProvider = Depends(get_openai_image_provider),
+    storage_service: MediaStorageService = Depends(get_media_storage_service),
+) -> AplusImageService:
+    return AplusImageService(db_session, image_provider, storage_service)
 
 
 def get_notification_service(

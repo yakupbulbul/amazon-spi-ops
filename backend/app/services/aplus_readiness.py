@@ -82,6 +82,13 @@ def build_aplus_readiness_report(
             (f"Module {index} bullet {bullet_index}", bullet, 90, 130)
             for bullet_index, bullet in enumerate(module.bullets, start=1)
         )
+        if module.image_mode == "generated" and module.generated_image_url:
+            add_issue(
+                level="warning",
+                code="generated_image_review",
+                field_label=f"Module {index} image",
+                message="AI-generated imagery requires human review before publish.",
+            )
 
     for field_label, text, warning_limit, error_limit in text_rules:
         text_length = len(text.strip())

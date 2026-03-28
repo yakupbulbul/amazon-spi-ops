@@ -23,3 +23,7 @@ class MediaStorageService:
         file_path.write_bytes(content)
         public_url = f"{self.url_prefix}/{subdirectory}/{file_name}"
         return file_path, public_url
+
+    def resolve_public_url(self, public_url: str) -> Path:
+        relative_path = public_url.removeprefix(f"{self.url_prefix}/")
+        return self.root / relative_path
