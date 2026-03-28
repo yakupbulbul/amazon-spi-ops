@@ -9,8 +9,8 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import hash_password
-from app.models.entities import InventorySnapshot, Product, User
-from app.models.enums import InventoryAlertStatus, UserRole
+from app.models.entities import InventoryAlert, InventorySnapshot, Product, User
+from app.models.enums import AlertSeverity, InventoryAlertStatus, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -79,31 +79,49 @@ def bootstrap_sample_catalog() -> None:
         session.flush()
 
         captured_at = datetime.now(UTC)
+        healthy_snapshot = InventorySnapshot(
+            product_id=seeded_products[0].id,
+            available_quantity=42,
+            reserved_quantity=3,
+            inbound_quantity=24,
+            alert_status=InventoryAlertStatus.HEALTHY.value,
+            captured_at=captured_at,
+        )
+        low_snapshot = InventorySnapshot(
+            product_id=seeded_products[1].id,
+            available_quantity=9,
+            reserved_quantity=2,
+            inbound_quantity=8,
+            alert_status=InventoryAlertStatus.LOW.value,
+            captured_at=captured_at,
+        )
+        out_of_stock_snapshot = InventorySnapshot(
+            product_id=seeded_products[2].id,
+            available_quantity=0,
+            reserved_quantity=1,
+            inbound_quantity=20,
+            alert_status=InventoryAlertStatus.OUT_OF_STOCK.value,
+            captured_at=captured_at,
+        )
+        session.add_all([healthy_snapshot, low_snapshot, out_of_stock_snapshot])
+        session.flush()
         session.add_all(
             [
-                InventorySnapshot(
-                    product_id=seeded_products[0].id,
-                    available_quantity=42,
-                    reserved_quantity=3,
-                    inbound_quantity=24,
-                    alert_status=InventoryAlertStatus.HEALTHY.value,
-                    captured_at=captured_at,
-                ),
-                InventorySnapshot(
+                InventoryAlert(
                     product_id=seeded_products[1].id,
-                    available_quantity=9,
-                    reserved_quantity=2,
-                    inbound_quantity=8,
-                    alert_status=InventoryAlertStatus.LOW.value,
-                    captured_at=captured_at,
+                    snapshot_id=low_snapshot.id,
+                    severity=AlertSeverity.WARNING.value,
+                    message="STANDING-DESK-MAT is at or below the low-stock threshold.",
+                    is_resolved=False,
+                    created_at=captured_at,
                 ),
-                InventorySnapshot(
+                InventoryAlert(
                     product_id=seeded_products[2].id,
-                    available_quantity=0,
-                    reserved_quantity=1,
-                    inbound_quantity=20,
-                    alert_status=InventoryAlertStatus.OUT_OF_STOCK.value,
-                    captured_at=captured_at,
+                    snapshot_id=out_of_stock_snapshot.id,
+                    severity=AlertSeverity.CRITICAL.value,
+                    message="LED-DESK-LAMP is out of stock.",
+                    is_resolved=False,
+                    created_at=captured_at,
                 ),
             ]
         )

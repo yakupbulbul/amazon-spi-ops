@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db_session
 from app.models.entities import User
+from app.services.amazon.service import AmazonSpApiService
 from app.services.auth_service import AuthService
 from app.services.dashboard_service import DashboardService
+from app.services.inventory_service import InventoryService
 from app.services.product_service import ProductService
 from app.services.user_service import UserService
 
@@ -26,8 +28,19 @@ def get_dashboard_service(db_session: Session = Depends(get_db_session)) -> Dash
     return DashboardService(db_session)
 
 
+def get_amazon_service() -> AmazonSpApiService:
+    return AmazonSpApiService()
+
+
 def get_product_service(db_session: Session = Depends(get_db_session)) -> ProductService:
     return ProductService(db_session)
+
+
+def get_inventory_service(
+    db_session: Session = Depends(get_db_session),
+    amazon_service: AmazonSpApiService = Depends(get_amazon_service),
+) -> InventoryService:
+    return InventoryService(db_session, amazon_service)
 
 
 def get_current_user(
