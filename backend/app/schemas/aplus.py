@@ -3,18 +3,22 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AplusModulePayload(BaseModel):
-    module_type: Literal["hero", "feature", "comparison", "faq"] = "feature"
+    model_config = ConfigDict(extra="forbid")
+
+    module_type: Literal["hero", "feature", "comparison", "faq"]
     headline: str = Field(min_length=5, max_length=120)
     body: str = Field(min_length=20, max_length=600)
-    bullets: list[str] = Field(default_factory=list, max_length=4)
+    bullets: list[str] = Field(min_length=0, max_length=4)
     image_brief: str = Field(min_length=10, max_length=240)
 
 
 class AplusDraftPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     headline: str = Field(min_length=8, max_length=140)
     subheadline: str = Field(min_length=12, max_length=180)
     brand_story: str = Field(min_length=40, max_length=900)

@@ -1,4 +1,5 @@
 from app.core.config import Settings
+from app.schemas.aplus import AplusDraftPayload
 from app.services.ai.openai_service import OpenAiAplusService
 
 
@@ -34,3 +35,17 @@ def test_generate_aplus_draft_returns_mock_payload_without_api_key() -> None:
     assert len(draft.modules) == 3
     assert draft.modules[0].module_type == "hero"
     assert "Seat Cover" in draft.modules[0].body
+
+
+def test_aplus_structured_output_schema_requires_all_module_fields() -> None:
+    schema = AplusDraftPayload.model_json_schema()
+    module_schema = schema["$defs"]["AplusModulePayload"]
+
+    assert module_schema["additionalProperties"] is False
+    assert set(module_schema["required"]) == {
+        "module_type",
+        "headline",
+        "body",
+        "bullets",
+        "image_brief",
+    }
