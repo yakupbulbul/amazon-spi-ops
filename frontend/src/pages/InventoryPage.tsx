@@ -26,11 +26,20 @@ function formatStatusLabel(status: string): string {
   return status.replaceAll("_", " ");
 }
 
+function formatTimestamp(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 export function InventoryPage() {
   const { token } = useAuth();
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [alerts, setAlerts] = useState<InventoryAlertItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [marketplaceFilter, setMarketplaceFilter] = useState("all");
+  const [healthFilter, setHealthFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,17 +86,25 @@ export function InventoryPage() {
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return inventoryItems;
-    }
+    return inventoryItems.filter((item) => {
+      const matchesQuery =
+        !normalizedQuery ||
+        [item.product_name, item.sku, item.asin, item.marketplace_id]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      const matchesMarketplace =
+        marketplaceFilter === "all" || item.marketplace_id === marketplaceFilter;
+      const matchesHealth = healthFilter === "all" || item.alert_status === healthFilter;
 
-    return inventoryItems.filter((item) =>
-      [item.product_name, item.sku, item.asin, item.marketplace_id]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery),
-    );
-  }, [deferredSearchQuery, inventoryItems]);
+      return matchesQuery && matchesMarketplace && matchesHealth;
+    });
+  }, [deferredSearchQuery, healthFilter, inventoryItems, marketplaceFilter]);
+
+  const marketplaceOptions = useMemo(
+    () => Array.from(new Set(inventoryItems.map((item) => item.marketplace_id))).sort(),
+    [inventoryItems],
+  );
 
   const lowOrCriticalCount = filteredItems.filter(
     (item) => item.alert_status !== "healthy",
@@ -168,6 +185,38 @@ export function InventoryPage() {
                   className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
                 />
               </label>
+              <select
+                value={marketplaceFilter}
+                onChange={(event) => setMarketplaceFilter(event.target.value)}
+                className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+              >
+                <option value="all" className="bg-slate-950">
+                  All marketplaces
+                </option>
+                {marketplaceOptions.map((marketplaceId) => (
+                  <option key={marketplaceId} value={marketplaceId} className="bg-slate-950">
+                    {marketplaceId}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={healthFilter}
+                onChange={(event) => setHealthFilter(event.target.value)}
+                className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+              >
+                <option value="all" className="bg-slate-950">
+                  All health states
+                </option>
+                <option value="healthy" className="bg-slate-950">
+                  Healthy
+                </option>
+                <option value="low" className="bg-slate-950">
+                  Low stock
+                </option>
+                <option value="out_of_stock" className="bg-slate-950">
+                  Out of stock
+                </option>
+              </select>
               <button
                 type="button"
                 onClick={handleSync}
@@ -205,19 +254,18 @@ export function InventoryPage() {
             </div>
           ) : (
             <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-white/10">
-              <div className="hidden grid-cols-[minmax(0,2fr)_120px_120px_120px_140px] gap-4 border-b border-white/10 bg-white/[0.04] px-5 py-4 text-xs uppercase tracking-[0.24em] text-slate-500 lg:grid">
+              <div className="hidden grid-cols-[minmax(0,2fr)_minmax(260px,1.1fr)_160px_160px] gap-4 border-b border-white/10 bg-white/[0.04] px-5 py-4 text-xs uppercase tracking-[0.24em] text-slate-500 lg:grid">
                 <span>Product</span>
-                <span>Available</span>
-                <span>Reserved</span>
-                <span>Inbound</span>
+                <span>Latest quantities</span>
                 <span>Health</span>
+                <span>Captured</span>
               </div>
 
               <div className="divide-y divide-white/10">
                 {filteredItems.map((item) => (
                   <article
                     key={item.product_id}
-                    className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,2fr)_120px_120px_120px_140px] lg:items-center"
+                    className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1.1fr)_160px_160px] lg:items-center"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-base font-medium text-white">{item.product_name}</p>
@@ -225,13 +273,27 @@ export function InventoryPage() {
                         <span className="rounded-full border border-white/10 px-2.5 py-1">{item.sku}</span>
                         <span className="rounded-full border border-white/10 px-2.5 py-1">{item.asin}</span>
                         <span className="rounded-full border border-white/10 px-2.5 py-1">
+                          {item.marketplace_id}
+                        </span>
+                        <span className="rounded-full border border-white/10 px-2.5 py-1">
                           Threshold {item.low_stock_threshold}
                         </span>
                       </div>
                     </div>
-                    <div className="text-sm text-slate-100">{item.available_quantity}</div>
-                    <div className="text-sm text-slate-100">{item.reserved_quantity}</div>
-                    <div className="text-sm text-slate-100">{item.inbound_quantity}</div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-3 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Available</p>
+                        <p className="mt-2 text-lg font-semibold text-white">{item.available_quantity}</p>
+                      </div>
+                      <div className="rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-3 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Reserved</p>
+                        <p className="mt-2 text-lg font-semibold text-white">{item.reserved_quantity}</p>
+                      </div>
+                      <div className="rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-3 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Inbound</p>
+                        <p className="mt-2 text-lg font-semibold text-white">{item.inbound_quantity}</p>
+                      </div>
+                    </div>
                     <div>
                       <span
                         className={[
@@ -241,6 +303,9 @@ export function InventoryPage() {
                       >
                         {formatStatusLabel(item.alert_status)}
                       </span>
+                    </div>
+                    <div className="text-sm text-slate-300">
+                      {item.captured_at ? formatTimestamp(item.captured_at) : "Not synced"}
                     </div>
                   </article>
                 ))}
