@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
@@ -20,11 +20,10 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(*, subject: str, expires_delta: timedelta) -> str:
-    expires_at = datetime.now(UTC) + expires_delta
+    expires_at = datetime.now(timezone.utc) + expires_delta
     payload: dict[str, Any] = {"sub": subject, "exp": expires_at}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
     return jwt.decode(token, settings.secret_key, algorithms=["HS256"])
-

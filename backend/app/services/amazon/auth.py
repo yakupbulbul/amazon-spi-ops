@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -16,7 +16,7 @@ class LwaAccessToken:
     expires_at: datetime
 
     def is_valid(self) -> bool:
-        return self.expires_at > datetime.now(UTC) + timedelta(seconds=30)
+        return self.expires_at > datetime.now(timezone.utc) + timedelta(seconds=30)
 
 
 class AmazonLwaAuthService:
@@ -56,6 +56,6 @@ class AmazonLwaAuthService:
             expires_in = int(payload.get("expires_in", 3600))
             self._cached_token = LwaAccessToken(
                 access_token=payload["access_token"],
-                expires_at=datetime.now(UTC) + timedelta(seconds=expires_in),
+                expires_at=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
             )
             return self._cached_token.access_token

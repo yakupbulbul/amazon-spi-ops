@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from urllib.parse import quote
 
 import httpx
@@ -28,7 +28,7 @@ class AwsSigV4Signer:
             )
 
         signed_request = request
-        timestamp = datetime.now(UTC)
+        timestamp = datetime.now(timezone.utc)
         amz_date = timestamp.strftime("%Y%m%dT%H%M%SZ")
         date_stamp = timestamp.strftime("%Y%m%d")
         payload_hash = hashlib.sha256(request.content or b"").hexdigest()

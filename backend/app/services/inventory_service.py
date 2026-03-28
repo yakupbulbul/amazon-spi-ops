@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -325,4 +325,4 @@ class InventoryService:
 
     @staticmethod
     def _now() -> datetime:
-        return datetime.now(UTC)
+        return datetime.now(timezone.utc)

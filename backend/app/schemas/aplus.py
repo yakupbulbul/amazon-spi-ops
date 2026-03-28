@@ -30,6 +30,21 @@ class AplusDraftPayload(BaseModel):
 SupportedAplusLanguage = Literal["de-DE", "en-US", "en-GB", "fr-FR", "it-IT", "es-ES"]
 
 
+class AplusReadinessIssue(BaseModel):
+    level: Literal["error", "warning"]
+    code: str
+    message: str
+    field_label: str | None = None
+
+
+class AplusReadinessReport(BaseModel):
+    checked_payload: Literal["draft", "validated"]
+    is_publish_ready: bool
+    blocking_errors: list[AplusReadinessIssue]
+    warnings: list[AplusReadinessIssue]
+    missing_sections: list[str]
+
+
 class AplusGenerateRequest(BaseModel):
     product_id: str
     brand_tone: str | None = Field(default=None, max_length=255)
@@ -70,6 +85,7 @@ class AplusDraftResponse(BaseModel):
     auto_translate: bool
     draft_payload: AplusDraftPayload
     validated_payload: AplusDraftPayload | None
+    readiness_report: AplusReadinessReport
     created_at: datetime
     updated_at: datetime
 

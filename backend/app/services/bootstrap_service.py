@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -82,7 +82,7 @@ def bootstrap_sample_catalog() -> None:
         session.add_all(seeded_products)
         session.flush()
 
-        captured_at = datetime.now(UTC)
+        captured_at = datetime.now(timezone.utc)
         healthy_snapshot = InventorySnapshot(
             product_id=seeded_products[0].id,
             available_quantity=42,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -272,7 +272,7 @@ class CatalogImportService:
 
     @staticmethod
     def _now() -> datetime:
-        return datetime.now(UTC)
+        return datetime.now(timezone.utc)
 
     @staticmethod
     def _format_error_message(exc: Exception) -> str:
