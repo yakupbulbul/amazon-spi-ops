@@ -21,71 +21,55 @@ export function DraftMetadataBar({
   formatTimestamp,
 }: DraftMetadataBarProps) {
   return (
-    <div className="grid gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 lg:grid-cols-2 2xl:grid-cols-5">
-      <div className="rounded-[1.1rem] border border-white/10 bg-slate-950/60 px-4 py-3">
-        <div className="flex items-center gap-2 text-slate-400">
-          <Package2 className="h-4 w-4" />
-          <p className="text-xs uppercase tracking-[0.22em]">Product</p>
+    <div className="rounded-[1.5rem] bg-white/[0.03] px-4 py-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-slate-400">
+            <Package2 className="h-4 w-4" />
+            <p className="text-xs uppercase tracking-[0.22em]">Draft metadata</p>
+          </div>
+          <p className="mt-2 text-sm font-medium leading-6 text-white">
+            {product?.title ?? "No product selected"}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {product ? `SKU ${product.sku} · ASIN ${product.asin}` : "Select a catalog item to start."}
+          </p>
         </div>
-        <p className="mt-2 text-sm font-medium text-white">{product?.title ?? "No product selected"}</p>
-        <p className="mt-1 text-xs text-slate-400">{product ? `SKU ${product.sku} · ASIN ${product.asin}` : "Select a catalog item to start."}</p>
-      </div>
 
-      <div className="rounded-[1.1rem] border border-white/10 bg-slate-950/60 px-4 py-3">
-        <div className="flex items-center gap-2 text-slate-400">
-          <Globe className="h-4 w-4" />
-          <p className="text-xs uppercase tracking-[0.22em]">Marketplace</p>
-        </div>
-        <p className="mt-2 text-sm font-medium text-white">{draft?.marketplace_id ?? product?.marketplace_id ?? "Not set"}</p>
-      </div>
-
-      <div className="rounded-[1.1rem] border border-white/10 bg-slate-950/60 px-4 py-3">
-        <div className="flex items-center gap-2 text-slate-400">
-          <Languages className="h-4 w-4" />
-          <p className="text-xs uppercase tracking-[0.22em]">Language</p>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-200">
-            Source {formatLanguageLabel(sourceLanguage as never)}
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-200">
+            <Globe className="h-3.5 w-3.5 text-slate-400" />
+            {draft?.marketplace_id ?? product?.marketplace_id ?? "Marketplace pending"}
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-200">
+            <Languages className="h-3.5 w-3.5 text-slate-400" />
+            {formatLanguageLabel(sourceLanguage as never)}
+            {autoTranslate ? ` -> ${formatLanguageLabel(targetLanguage as never)}` : ""}
           </span>
           <span
             className={[
-              "rounded-full border px-2.5 py-1 text-xs",
+              "rounded-full border px-3 py-1.5 text-xs",
               autoTranslate
                 ? "border-sky-300/20 bg-sky-500/10 text-sky-100"
-                : "border-white/10 text-slate-200",
+                : "border-emerald-400/20 bg-emerald-500/10 text-emerald-100",
             ].join(" ")}
           >
-            {autoTranslate
-              ? `Target ${formatLanguageLabel(targetLanguage as never)}`
-              : `Original draft`}
-          </span>
-        </div>
-      </div>
-
-      <div className="rounded-[1.1rem] border border-white/10 bg-slate-950/60 px-4 py-3">
-        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Draft type</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100">
             {autoTranslate ? "Translated draft" : "Original draft"}
           </span>
           {draft ? (
-            <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-200">
+            <span className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-200">
               {draft.status.replaceAll("_", " ")}
             </span>
           ) : null}
         </div>
       </div>
 
-      <div className="rounded-[1.1rem] border border-white/10 bg-slate-950/60 px-4 py-3">
-        <div className="flex items-center gap-2 text-slate-400">
-          <Clock3 className="h-4 w-4" />
-          <p className="text-xs uppercase tracking-[0.22em]">Generated</p>
-        </div>
-        <p className="mt-2 text-sm font-medium text-white">
-          {draft ? formatTimestamp(draft.created_at) : "Not generated yet"}
-        </p>
-        {draft ? <p className="mt-1 text-xs text-slate-400">Updated {formatTimestamp(draft.updated_at)}</p> : null}
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+        <span className="inline-flex items-center gap-2">
+          <Clock3 className="h-3.5 w-3.5" />
+          {draft ? `Generated ${formatTimestamp(draft.created_at)}` : "Not generated yet"}
+        </span>
+        {draft ? <span>Updated {formatTimestamp(draft.updated_at)}</span> : null}
       </div>
     </div>
   );

@@ -403,9 +403,9 @@ export function AplusStudioPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-        <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,_rgba(14,165,233,0.18),_rgba(15,23,42,0.94)_38%,_rgba(2,6,23,1)_100%)] p-6 shadow-2xl shadow-black/30 sm:p-8">
+    <div className="space-y-6">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_320px]">
+        <div className="rounded-[2rem] bg-[linear-gradient(135deg,_rgba(14,165,233,0.18),_rgba(15,23,42,0.94)_38%,_rgba(2,6,23,1)_100%)] p-6 shadow-2xl shadow-black/30 sm:p-8">
           <p className="text-xs uppercase tracking-[0.32em] text-sky-100/70">A+ Content Studio</p>
           <h2 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
             Generate multilingual A+ drafts with faster product discovery and clearer language control.
@@ -414,15 +414,26 @@ export function AplusStudioPage() {
             Search the product catalog instantly, choose the output language, optionally translate
             the structured draft into another locale, and keep the editor and publish preview aligned.
           </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <span className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-200">
+              Searchable product discovery
+            </span>
+            <span className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-200">
+              Multilingual generation
+            </span>
+            <span className="rounded-full border border-sky-300/20 bg-sky-500/10 px-3 py-1.5 text-xs text-sky-100">
+              Structured translation safe
+            </span>
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5">
+          <article className="rounded-[1.75rem] bg-white/[0.04] p-5">
             <p className="text-sm text-slate-400">Drafts</p>
             <p className="mt-4 text-4xl font-semibold text-white">{drafts.length}</p>
             <p className="mt-3 text-sm leading-6 text-slate-500">Stored A+ concepts ready for editorial review.</p>
           </article>
-          <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5">
+          <article className="rounded-[1.75rem] bg-white/[0.04] p-5">
             <p className="text-sm text-slate-400">Current output language</p>
             <p className="mt-4 text-2xl font-semibold text-white">
               {formatLanguageLabel(generationTargetLanguage)}
@@ -450,25 +461,41 @@ export function AplusStudioPage() {
         </section>
       ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+      <section className="grid gap-6 xl:grid-cols-[400px_minmax(0,1fr)] xl:items-start">
         <div className="space-y-6">
-          <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
+          <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
             <div className="flex items-center gap-3">
               <Sparkles className="h-5 w-5 text-sky-200" />
               <div>
                 <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Prompt controls</p>
                 <h3 className="mt-1 text-xl font-semibold text-white">Generate draft</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Pick the product, choose the language flow, and generate a structured draft.
+                </p>
               </div>
             </div>
 
-            <div className="mt-6 space-y-4">
+            <div className="mt-6 space-y-6">
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Product</p>
+                  <p className="text-sm text-slate-400">Choose the listing that will anchor the A+ story.</p>
+                </div>
               <ProductCombobox
                 products={products}
                 selectedProduct={selectedProduct}
                 onSelect={(product) => handleProductChange(product.id)}
                 disabled={isLoading || isGenerating}
               />
+              </section>
 
+              <div className="h-px bg-white/10" />
+
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Language</p>
+                  <p className="text-sm text-slate-400">Define the language used for base generation.</p>
+                </div>
               <LanguageSelector
                 label="Source language"
                 value={sourceLanguage}
@@ -476,7 +503,15 @@ export function AplusStudioPage() {
                 helperText="This is the language used for the original structured generation prompt."
                 disabled={isGenerating}
               />
+              </section>
 
+              <div className="h-px bg-white/10" />
+
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Translation</p>
+                  <p className="text-sm text-slate-400">Translate shopper-facing copy without changing the schema.</p>
+                </div>
               <TranslationToggle
                 autoTranslate={autoTranslate}
                 sourceLanguage={sourceLanguage}
@@ -485,9 +520,10 @@ export function AplusStudioPage() {
                 onTargetLanguageChange={setTargetLanguage}
                 disabled={isGenerating}
               />
+              </section>
 
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] px-4 py-4 text-sm leading-6 text-slate-300">
-                <p className="font-medium text-white">What happens next</p>
+              <div className="rounded-[1.25rem] bg-white/[0.03] px-4 py-3 text-sm leading-6 text-slate-300">
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Generation flow</p>
                 <p className="mt-2">
                   {autoTranslate
                     ? `The base A+ draft will be generated in ${formatLanguageLabel(sourceLanguage)} and then translated into ${formatLanguageLabel(targetLanguage)} while preserving the JSON structure.`
@@ -495,6 +531,13 @@ export function AplusStudioPage() {
                 </p>
               </div>
 
+              <div className="h-px bg-white/10" />
+
+              <section className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Brand tone</p>
+                  <p className="text-sm text-slate-400">Guide the voice, audience, and positioning.</p>
+                </div>
               <label className="block space-y-2">
                 <span className="text-sm text-slate-300">Brand tone</span>
                 <input
@@ -507,7 +550,7 @@ export function AplusStudioPage() {
               </label>
 
               <label className="block space-y-2">
-                <span className="text-sm text-slate-300">Positioning</span>
+                <span className="text-sm text-slate-300">Positioning and customer context</span>
                 <textarea
                   value={positioning}
                   onChange={(event) => setPositioning(event.target.value)}
@@ -516,33 +559,42 @@ export function AplusStudioPage() {
                   className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-slate-500"
                 />
               </label>
-            </div>
+              </section>
 
-            <button
-              type="button"
-              onClick={() => void handleGenerate()}
-              disabled={isLoading || isGenerating || !selectedProductId}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[1.25rem] bg-amber-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>
-                {isGenerating
-                  ? autoTranslate
-                    ? "Generating and translating draft..."
-                    : "Generating draft..."
-                  : autoTranslate
-                    ? "Generate and translate A+ draft"
-                    : "Generate A+ draft"}
-              </span>
-            </button>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => void handleGenerate()}
+                  disabled={isLoading || isGenerating || !selectedProductId}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-[1.25rem] bg-amber-300 px-5 py-3.5 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>
+                    {isGenerating
+                      ? autoTranslate
+                        ? "Generating and translating draft..."
+                        : "Generating draft..."
+                      : autoTranslate
+                        ? "Generate and translate A+ draft"
+                        : "Generate A+ draft"}
+                  </span>
+                </button>
+                <p className="mt-2 text-center text-xs text-slate-500">
+                  The generated draft keeps the current JSON contract used by validation and publish.
+                </p>
+              </div>
+            </div>
           </article>
 
-          <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
+          <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
             <div className="flex items-center gap-3">
               <FilePenLine className="h-5 w-5 text-amber-200" />
               <div>
                 <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Draft history</p>
                 <h3 className="mt-1 text-xl font-semibold text-white">Recent drafts</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Jump between recent originals and translated variations.
+                </p>
               </div>
             </div>
 
@@ -605,14 +657,14 @@ export function AplusStudioPage() {
         </div>
 
         <div className="space-y-6">
-          <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
+          <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Editor</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">
+                <h3 className="mt-2 text-[1.8rem] font-semibold leading-tight text-white">
                   {selectedDraft ? selectedDraft.product_title : "Draft editor"}
                 </h3>
-                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
                   Edit the structured JSON fields directly. Validation persists the edited payload,
                   and publish prepares the Amazon-compatible document preview.
                 </p>
@@ -638,7 +690,7 @@ export function AplusStudioPage() {
               </div>
             </div>
 
-            <div className="mt-6">
+              <div className="mt-5">
               <DraftMetadataBar
                 draft={selectedDraft}
                 product={selectedProduct}
@@ -866,7 +918,7 @@ export function AplusStudioPage() {
           </article>
 
           <section className="grid gap-6 2xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
+            <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
               <div className="flex items-center gap-3">
                 <Lightbulb className="h-5 w-5 text-amber-200" />
                 <div>
@@ -904,7 +956,7 @@ export function AplusStudioPage() {
               )}
             </article>
 
-            <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
+            <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
               <div className="flex items-center gap-3">
                 <FileJson2 className="h-5 w-5 text-sky-200" />
                 <div>

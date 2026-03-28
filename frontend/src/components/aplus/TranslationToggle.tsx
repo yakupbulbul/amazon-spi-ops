@@ -22,15 +22,15 @@ export function TranslationToggle({
   disabled = false,
 }: TranslationToggleProps) {
   return (
-    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+    <div className="space-y-3">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-3 text-sky-200">
+          <div className="rounded-2xl bg-slate-950/70 p-3 text-sky-200">
             <Languages className="h-5 w-5" />
           </div>
           <div>
             <p className="text-sm font-medium text-white">Auto-translate generated draft</p>
-            <p className="mt-1 text-sm leading-6 text-slate-400">
+            <p className="mt-1 text-xs leading-5 text-slate-500">
               Generate the structured base draft in {formatLanguageLabel(sourceLanguage)} and translate
               the shopper-facing copy into another language while preserving the JSON shape.
             </p>
@@ -59,7 +59,15 @@ export function TranslationToggle({
       </div>
 
       {autoTranslate ? (
-        <div className="mt-4">
+        <div className="space-y-3 rounded-[1.25rem] bg-white/[0.03] p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-slate-200">
+              Generate in {formatLanguageLabel(sourceLanguage)}
+            </span>
+            <span className="rounded-full border border-sky-300/20 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100">
+              Translate shopper-facing copy to {formatLanguageLabel(targetLanguage)}
+            </span>
+          </div>
           <LanguageSelector
             label="Target language"
             value={targetLanguage}
@@ -69,7 +77,7 @@ export function TranslationToggle({
           />
         </div>
       ) : (
-        <p className="mt-4 rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+        <p className="rounded-[1.25rem] bg-white/[0.03] px-4 py-3 text-sm text-slate-300">
           The draft will be generated directly in {formatLanguageLabel(sourceLanguage)}.
         </p>
       )}
