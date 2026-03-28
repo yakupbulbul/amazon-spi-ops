@@ -1,8 +1,13 @@
 # Amazon Seller Ops
 
-Production-minded full-stack application for Amazon seller operations. Phase 1 establishes the
-repository, backend and frontend scaffolds, Dramatiq worker wiring, Docker topology, and a
-responsive admin shell with live backend health status.
+Production-minded full-stack application for Amazon seller operations. The current build includes:
+
+- Amazon seller catalog import via SP-API Listings Items
+- inventory monitoring with manual sync and low-stock alerts
+- price and stock mutation workflows with audit logs
+- OpenAI-backed A+ draft generation and publish-payload preview
+- Slack notification queueing, worker delivery, and history UI
+- responsive admin dashboard, products, inventory, notifications, settings, and A+ Studio pages
 
 ## Project Structure
 
@@ -38,6 +43,7 @@ Supported variables:
 - `MARKETPLACE_ID`
 - `SELLER_ID`
 - `OPENAI_API_KEY`
+- `OPENAI_MODEL`
 - `SLACK_WEBHOOK_URL`
 - `DATABASE_URL`
 - `REDIS_URL`
@@ -75,6 +81,72 @@ npm run dev -- --host 0.0.0.0 --port 5173
 The frontend uses same-origin `/api` requests by default. For local Vite development, the dev
 server proxies `/api` to `http://localhost:8000`, so the browser does not need CORS enabled. In
 other environments, set `VITE_API_BASE_URL` only if you need to override that default.
+
+## Current Application Surface
+
+Default Docker URL:
+
+```text
+http://127.0.0.1:8080
+```
+
+Default admin login for local development:
+
+```text
+admin@example.com
+change-me-admin
+```
+
+Key UI routes:
+
+- `/`
+- `/products`
+- `/aplus`
+- `/inventory`
+- `/notifications`
+- `/settings`
+
+Key API routes currently wired:
+
+- `GET /api/health`
+- `GET /api/health/ready`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `GET /api/dashboard/summary`
+- `GET /api/products`
+- `POST /api/products/import`
+- `GET /api/products/import-jobs/latest`
+- `PATCH /api/products/{id}/price`
+- `PATCH /api/products/{id}/stock`
+- `GET /api/inventory`
+- `GET /api/inventory/alerts`
+- `POST /api/inventory/sync`
+- `GET /api/aplus/drafts`
+- `POST /api/aplus/generate`
+- `POST /api/aplus/validate`
+- `POST /api/aplus/publish`
+- `GET /api/events`
+- `POST /api/notifications/slack/test`
+
+## Integration Notes
+
+Amazon SP-API:
+
+- catalog import uses the configured `MARKETPLACE_ID` and `SELLER_ID`
+- live inventory sync uses the configured marketplace
+- price and stock mutations call the live listing adapter when credentials are present
+
+OpenAI:
+
+- A+ generation uses `OPENAI_API_KEY`
+- default model is `gpt-4o-mini`
+- if `OPENAI_API_KEY` is unset, the backend returns a deterministic mock draft for local development
+
+Slack:
+
+- Slack delivery is processed asynchronously by the Dramatiq worker
+- if `SLACK_WEBHOOK_URL` is unset, notification attempts are recorded as failed with a clear error message
+- use the Settings page to queue a test notification and inspect the stored result
 
 ## Quality Checks
 
@@ -133,16 +205,15 @@ need a different host port.
 Verified in this environment:
 
 - backend `ruff check .`
-- backend `pytest`
 - backend `mypy app`
 - backend live health requests to `/api/health` and `/api/health/ready`
 - frontend `npm run lint`
 - frontend `npm run build`
 - `docker compose config`
+- `docker compose up --build -d`
+- live Amazon catalog import through `/api/products/import`
+- live A+ draft generation, validation, and publish-payload preview
+- notification queueing through `/api/notifications/slack/test`
 
-Not fully verified in this environment:
-
-- `docker compose up --build`
-
-The Docker startup check was blocked because the local Docker daemon socket was unavailable at
-`/Users/yakupbulbul/.docker/run/docker.sock`.
+Host-side `pytest` may require local installation of `psycopg` if you are not running tests inside
+the project backend environment or container.
