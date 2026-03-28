@@ -1,14 +1,18 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     app_name: str = "Amazon Seller Ops"
     app_version: str = "0.1.0"
     app_env: str = Field(default="development", alias="APP_ENV")
-    secret_key: str = Field(default="change-me", alias="SECRET_KEY")
+    secret_key: str = Field(default="change-me-change-me-change-me-1234", alias="SECRET_KEY")
     database_url: str = Field(
         default="postgresql+psycopg://postgres:postgres@localhost:5432/amazon_seller_ops",
         alias="DATABASE_URL",
@@ -23,9 +27,12 @@ class Settings(BaseSettings):
     seller_id: str = Field(default="", alias="SELLER_ID")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     slack_webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
+    admin_email: str = Field(default="admin@example.com", alias="ADMIN_EMAIL")
+    admin_password: str = Field(default="change-me-admin", alias="ADMIN_PASSWORD")
+    access_token_expire_minutes: int = Field(default=720, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(ROOT_DIR / ".env",),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -38,4 +45,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-
