@@ -11,8 +11,11 @@ import {
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AplusModuleEditorCard } from "../components/aplus/AplusModuleEditorCard";
+import { AplusOptimizationPanel } from "../components/aplus/AplusOptimizationPanel";
 import { AplusPreviewModal } from "../components/aplus/AplusPreviewModal";
 import { AplusReadinessPanel } from "../components/aplus/AplusReadinessPanel";
+import { AplusScoreBadge } from "../components/aplus/AplusScoreBadge";
+import { AplusSectionWarnings } from "../components/aplus/AplusSectionWarnings";
 import { DraftMetadataBar } from "../components/aplus/DraftMetadataBar";
 import { LanguageSelector } from "../components/aplus/LanguageSelector";
 import { ProductCombobox } from "../components/aplus/ProductCombobox";
@@ -35,6 +38,7 @@ import {
   type AplusDraftResponse,
   type AplusLanguage,
   type AplusModulePayload,
+  type AplusOptimizationSuggestion,
   type AplusPublishResponse,
   type ProductListItem,
   validateAplusDraft,
@@ -119,6 +123,20 @@ function getEditablePayload(draft: AplusDraftResponse | null): AplusDraftPayload
   return structuredClone(draft.validated_payload ?? draft.draft_payload);
 }
 
+function getOptimizationSuggestions(
+  draft: AplusDraftResponse | null,
+  sections: string[],
+): AplusOptimizationSuggestion[] {
+  if (!draft) {
+    return [];
+  }
+
+  const matches = [...draft.optimization_report.critical_issues, ...draft.optimization_report.warnings];
+  return matches.filter((item) =>
+    sections.some((section) => item.section.toLowerCase().includes(section.toLowerCase())),
+  );
+}
+
 export function AplusStudioPage() {
   const { token } = useAuth();
   const [products, setProducts] = useState<ProductListItem[]>([]);
@@ -163,6 +181,28 @@ export function AplusStudioPage() {
     editorDraft !== null &&
     JSON.stringify(editorDraft) !== JSON.stringify(selectedDraftPayload);
   const publishReady = selectedDraft?.readiness_report.is_publish_ready ?? false;
+  const optimizationScore = selectedDraft?.optimization_report.overall_score ?? null;
+  const coreMessageSuggestions = getOptimizationSuggestions(selectedDraft, [
+    "hero",
+    "headline",
+    "benefit",
+  ]);
+  const brandStorySuggestions = getOptimizationSuggestions(selectedDraft, [
+    "brand story",
+    "differentiation",
+  ]);
+  const featureSuggestions = getOptimizationSuggestions(selectedDraft, [
+    "feature",
+    "technical detail",
+    "customer education",
+    "usage scenario",
+  ]);
+  const moduleSuggestions = getOptimizationSuggestions(selectedDraft, [
+    "module",
+    "comparison",
+    "image",
+    "cross-section",
+  ]);
   const hasPendingImageGeneration =
     selectedDraft?.draft_payload.modules.some(
       (module) => module.image_status === "queued" || module.image_status === "generating",
@@ -888,6 +928,7 @@ export function AplusStudioPage() {
                           {formatLanguageLabel(draft.target_language)}
                         </span>
                       ) : null}
+                      <AplusScoreBadge score={draft.optimization_report.overall_score} />
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-400">
                       Updated {formatTimestamp(draft.updated_at)}
@@ -911,6 +952,9 @@ export function AplusStudioPage() {
                   Edit the structured JSON fields directly. Validation persists the edited payload,
                   and publish prepares the Amazon-compatible document preview.
                 </p>
+                <div className="mt-4">
+                  <AplusScoreBadge score={optimizationScore} />
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-3">
@@ -969,6 +1013,13 @@ export function AplusStudioPage() {
               />
             </div>
 
+            <div className="mt-5">
+              <AplusOptimizationPanel
+                draft={selectedDraft}
+                hasUnsavedChanges={hasUnsavedChanges}
+              />
+            </div>
+
             {!editorDraft ? (
               <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm leading-6 text-slate-400">
                 Generate a draft or select an existing draft to start editing the A+ payload.
@@ -1004,6 +1055,8 @@ export function AplusStudioPage() {
                       Keep the opening proposition concise and easy to scan in a module-based layout.
                     </p>
                   </div>
+
+                  <AplusSectionWarnings items={coreMessageSuggestions} />
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     <label className="block space-y-2">
@@ -1056,6 +1109,8 @@ export function AplusStudioPage() {
                     </p>
                   </div>
 
+                  <AplusSectionWarnings items={brandStorySuggestions} />
+
                   <label className="block space-y-2">
                     <span className="text-sm text-slate-300">Brand story</span>
                     <textarea
@@ -1077,27 +1132,30 @@ export function AplusStudioPage() {
                 </div>
 
                 <div className="grid gap-5 xl:grid-cols-2">
-                  <label className="block space-y-2 rounded-[1.5rem] bg-white/[0.03] p-4">
-                    <span className="text-sm font-medium text-white">Key features</span>
-                    <p className="text-xs leading-5 text-slate-500">
-                      One benefit-led point per line. These will be visible to editors and reused across modules.
-                    </p>
-                    <textarea
-                      value={joinLines(editorDraft.key_features)}
-                      onChange={(event) =>
-                        setEditorDraft((currentDraft) =>
-                          currentDraft
-                            ? {
-                                ...currentDraft,
-                                key_features: parseLines(event.target.value),
-                              }
-                            : currentDraft,
-                        )
-                      }
-                      rows={6}
-                      className="w-full rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-7 text-white outline-none"
-                    />
-                  </label>
+                  <div className="space-y-3 rounded-[1.5rem] bg-white/[0.03] p-4">
+                    <AplusSectionWarnings items={featureSuggestions} />
+                    <label className="block space-y-2">
+                      <span className="text-sm font-medium text-white">Key features</span>
+                      <p className="text-xs leading-5 text-slate-500">
+                        One benefit-led point per line. These will be visible to editors and reused across modules.
+                      </p>
+                      <textarea
+                        value={joinLines(editorDraft.key_features)}
+                        onChange={(event) =>
+                          setEditorDraft((currentDraft) =>
+                            currentDraft
+                              ? {
+                                  ...currentDraft,
+                                  key_features: parseLines(event.target.value),
+                                }
+                              : currentDraft,
+                          )
+                        }
+                        rows={6}
+                        className="w-full rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-7 text-white outline-none"
+                      />
+                    </label>
+                  </div>
 
                   <label className="block space-y-2 rounded-[1.5rem] bg-white/[0.03] p-4">
                     <span className="text-sm font-medium text-white">Compliance notes</span>
@@ -1145,6 +1203,8 @@ export function AplusStudioPage() {
                       </button>
                     </div>
                   </div>
+
+                  <AplusSectionWarnings items={moduleSuggestions} />
 
                   <div className="space-y-4">
                     {editorDraft.modules.map((module, index) => (
