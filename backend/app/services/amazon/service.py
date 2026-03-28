@@ -11,6 +11,7 @@ from app.services.amazon.adapters import (
     MockAmazonSpApiAdapter,
 )
 from app.services.amazon.client import AmazonSpApiClient
+from app.services.amazon.exceptions import AmazonAuthorizationError
 
 
 class AmazonSpApiService:
@@ -22,26 +23,31 @@ class AmazonSpApiService:
         return AmazonSpApiClient(self.settings)
 
     @cached_property
-    def adapter(self) -> AmazonSpApiAdapter:
-        if self._should_use_mock_adapter():
-            return MockAmazonSpApiAdapter(self.settings)
+    def live_adapter(self) -> AmazonSpApiAdapter:
         return LiveAmazonSpApiAdapter(self.client, self.settings)
 
-    def _should_use_mock_adapter(self) -> bool:
-        return not all(
+    @cached_property
+    def mock_adapter(self) -> AmazonSpApiAdapter:
+        return MockAmazonSpApiAdapter(self.settings)
+
+    def _has_core_sp_api_credentials(self) -> bool:
+        return all(
             [
                 self.settings.lwa_client_id,
                 self.settings.lwa_client_secret,
                 self.settings.lwa_refresh_token,
                 self.settings.aws_access_key_id,
                 self.settings.aws_secret_access_key,
-                self.settings.seller_id,
                 self.settings.marketplace_id,
             ]
         )
 
+    def _has_listing_credentials(self) -> bool:
+        return self._has_core_sp_api_credentials() and bool(self.settings.seller_id)
+
     def get_catalog_item(self, asin: str, *, marketplace_id: str | None = None) -> dict[str, Any]:
-        return self.adapter.get_catalog_item(asin, marketplace_id=marketplace_id)
+        adapter = self.live_adapter if self._has_core_sp_api_credentials() else self.mock_adapter
+        return adapter.get_catalog_item(asin, marketplace_id=marketplace_id)
 
     def get_inventory_summaries(
         self,
@@ -49,7 +55,8 @@ class AmazonSpApiService:
         marketplace_id: str | None = None,
         seller_skus: list[str] | None = None,
     ) -> dict[str, Any]:
-        return self.adapter.get_inventory_summaries(
+        adapter = self.live_adapter if self._has_core_sp_api_credentials() else self.mock_adapter
+        return adapter.get_inventory_summaries(
             marketplace_id=marketplace_id,
             seller_skus=seller_skus,
         )
@@ -62,7 +69,11 @@ class AmazonSpApiService:
         currency: str,
         marketplace_id: str | None = None,
     ) -> dict[str, Any]:
-        return self.adapter.update_listing_price(
+        if not self._has_listing_credentials():
+            raise AmazonAuthorizationError(
+                "SELLER_ID is required for live listing mutations. Configure it before using real price updates."
+            )
+        return self.live_adapter.update_listing_price(
             sku=sku,
             price=price,
             currency=currency,
@@ -76,7 +87,11 @@ class AmazonSpApiService:
         quantity: int,
         marketplace_id: str | None = None,
     ) -> dict[str, Any]:
-        return self.adapter.update_listing_stock(
+        if not self._has_listing_credentials():
+            raise AmazonAuthorizationError(
+                "SELLER_ID is required for live listing mutations. Configure it before using real stock updates."
+            )
+        return self.live_adapter.update_listing_stock(
             sku=sku,
             quantity=quantity,
             marketplace_id=marketplace_id,
