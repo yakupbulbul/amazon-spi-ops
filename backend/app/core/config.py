@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     marketplace_id: str = Field(default="", alias="MARKETPLACE_ID")
     seller_id: str = Field(default="", alias="SELLER_ID")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
     slack_webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
     aws_region: str = Field(default="", alias="AWS_REGION")
     sp_api_endpoint: str = Field(

@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db_session
 from app.models.entities import User
+from app.services.ai.openai_service import OpenAiAplusService
+from app.services.aplus_service import AplusService
 from app.services.amazon.service import AmazonSpApiService
 from app.services.auth_service import AuthService
 from app.services.catalog_import_service import CatalogImportService
@@ -31,6 +33,18 @@ def get_dashboard_service(db_session: Session = Depends(get_db_session)) -> Dash
 
 def get_amazon_service() -> AmazonSpApiService:
     return AmazonSpApiService()
+
+
+def get_openai_aplus_service() -> OpenAiAplusService:
+    return OpenAiAplusService()
+
+
+def get_aplus_service(
+    db_session: Session = Depends(get_db_session),
+    amazon_service: AmazonSpApiService = Depends(get_amazon_service),
+    openai_service: OpenAiAplusService = Depends(get_openai_aplus_service),
+) -> AplusService:
+    return AplusService(db_session, amazon_service, openai_service)
 
 
 def get_product_service(db_session: Session = Depends(get_db_session)) -> ProductService:

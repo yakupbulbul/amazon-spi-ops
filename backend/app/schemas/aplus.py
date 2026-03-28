@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class AplusModulePayload(BaseModel):
+    module_type: Literal["hero", "feature", "comparison", "faq"] = "feature"
+    headline: str = Field(min_length=5, max_length=120)
+    body: str = Field(min_length=20, max_length=600)
+    bullets: list[str] = Field(default_factory=list, max_length=4)
+    image_brief: str = Field(min_length=10, max_length=240)
+
+
+class AplusDraftPayload(BaseModel):
+    headline: str = Field(min_length=8, max_length=140)
+    subheadline: str = Field(min_length=12, max_length=180)
+    brand_story: str = Field(min_length=40, max_length=900)
+    key_features: list[str] = Field(min_length=3, max_length=6)
+    modules: list[AplusModulePayload] = Field(min_length=3, max_length=5)
+    compliance_notes: list[str] = Field(min_length=2, max_length=6)
+
+
+class AplusGenerateRequest(BaseModel):
+    product_id: str
+    brand_tone: str | None = Field(default=None, max_length=255)
+    positioning: str | None = Field(default=None, max_length=512)
+
+
+class AplusValidateRequest(BaseModel):
+    draft_id: str
+    draft_payload: AplusDraftPayload
+
+
+class AplusPublishRequest(BaseModel):
+    draft_id: str
+
+
+class AplusDraftResponse(BaseModel):
+    id: str
+    product_id: str
+    product_sku: str
+    product_asin: str
+    product_title: str
+    marketplace_id: str
+    status: str
+    brand_tone: str | None
+    positioning: str | None
+    draft_payload: AplusDraftPayload
+    validated_payload: AplusDraftPayload | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AplusDraftListResponse(BaseModel):
+    items: list[AplusDraftResponse]
+
+
+class AplusPublishResponse(BaseModel):
+    draft: AplusDraftResponse
+    publish_job_id: str
+    status: str
+    message: str
+    prepared_payload: dict[str, object]
