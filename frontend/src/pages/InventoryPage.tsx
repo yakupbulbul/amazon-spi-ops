@@ -1,11 +1,14 @@
-import {
-  AlertTriangle,
-  RefreshCcw,
-  Search,
-  Warehouse,
-} from "lucide-react";
+import { AlertTriangle, RefreshCcw, Search, Warehouse } from "lucide-react";
 import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
+import { AlertCard } from "../components/inventory/AlertCard";
+import {
+  formatAbsoluteTimestamp,
+  formatRelativeTimestamp,
+} from "../components/inventory/formatters";
+import { InventoryRow } from "../components/inventory/InventoryRow";
+import { SummaryCard } from "../components/inventory/SummaryCard";
 import { useAuth } from "../hooks/useAuth";
 import {
   getInventory,
@@ -15,26 +18,9 @@ import {
   type InventoryItem,
 } from "../lib/api";
 
-const inventoryBadgeStyles: Record<string, string> = {
-  healthy: "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
-  low: "border-amber-400/20 bg-amber-500/10 text-amber-100",
-  out_of_stock: "border-rose-400/20 bg-rose-500/10 text-rose-100",
-  critical: "border-rose-400/20 bg-rose-500/10 text-rose-100",
-};
-
-function formatStatusLabel(status: string): string {
-  return status.replaceAll("_", " ");
-}
-
-function formatTimestamp(value: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
 export function InventoryPage() {
   const { token } = useAuth();
+  const navigate = useNavigate();
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [alerts, setAlerts] = useState<InventoryAlertItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,6 +95,26 @@ export function InventoryPage() {
   const lowOrCriticalCount = filteredItems.filter(
     (item) => item.alert_status !== "healthy",
   ).length;
+  const outOfStockCount = filteredItems.filter((item) => item.alert_status === "out_of_stock").length;
+
+  const latestCapturedAt = useMemo(() => {
+    const timestamps = inventoryItems
+      .map((item) => item.captured_at)
+      .filter((value): value is string => value !== null)
+      .sort((left, right) => new Date(right).getTime() - new Date(left).getTime());
+
+    return timestamps[0] ?? null;
+  }, [inventoryItems]);
+
+  const recentlyUpdatedCount = useMemo(() => {
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    return filteredItems.filter((item) => {
+      if (!item.captured_at) {
+        return false;
+      }
+      return new Date(item.captured_at).getTime() >= dayAgo;
+    }).length;
+  }, [filteredItems]);
 
   async function handleSync() {
     if (!token) {
@@ -151,19 +157,35 @@ export function InventoryPage() {
             already flows through the Amazon adapter abstraction, using the mock adapter until live
             SP-API credentials are configured.
           </p>
+          <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs text-slate-200">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            Last synced {formatRelativeTimestamp(latestCapturedAt)}
+            {latestCapturedAt ? (
+              <span className="text-slate-400">({formatAbsoluteTimestamp(latestCapturedAt)})</span>
+            ) : null}
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-slate-400">Visible inventory rows</p>
-            <p className="mt-4 text-4xl font-semibold text-white">{filteredItems.length}</p>
-            <p className="mt-3 text-sm leading-6 text-slate-500">Filtered from the latest snapshot set.</p>
-          </article>
-          <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-slate-400">Rows needing attention</p>
-            <p className="mt-4 text-4xl font-semibold text-white">{lowOrCriticalCount}</p>
-            <p className="mt-3 text-sm leading-6 text-slate-500">Low-stock or out-of-stock products.</p>
-          </article>
+          <SummaryCard
+            icon={Warehouse}
+            label="Visible inventory rows"
+            value={filteredItems.length}
+            note="Filtered from the latest snapshot set."
+          />
+          <SummaryCard
+            icon={AlertTriangle}
+            label="Rows needing attention"
+            value={lowOrCriticalCount}
+            note={`${outOfStockCount} are currently out of stock.`}
+            tone={lowOrCriticalCount > 0 ? "warning" : "success"}
+          />
+          <SummaryCard
+            icon={RefreshCcw}
+            label="Recently updated"
+            value={recentlyUpdatedCount}
+            note="Rows refreshed in the last 24 hours."
+          />
         </div>
       </section>
 
@@ -253,64 +275,44 @@ export function InventoryPage() {
               </p>
             </div>
           ) : (
-            <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-white/10">
-              <div className="hidden grid-cols-[minmax(0,2fr)_minmax(260px,1.1fr)_160px_160px] gap-4 border-b border-white/10 bg-white/[0.04] px-5 py-4 text-xs uppercase tracking-[0.24em] text-slate-500 lg:grid">
-                <span>Product</span>
-                <span>Latest quantities</span>
-                <span>Health</span>
-                <span>Captured</span>
-              </div>
-
-              <div className="divide-y divide-white/10">
+            <>
+              <div className="mt-6 space-y-4 lg:hidden">
                 {filteredItems.map((item) => (
-                  <article
+                  <InventoryRow
                     key={item.product_id}
-                    className="grid gap-5 px-5 py-5 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1.1fr)_160px_160px] lg:items-center"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-base font-medium text-white">{item.product_name}</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                        <span className="rounded-full border border-white/10 px-2.5 py-1">{item.sku}</span>
-                        <span className="rounded-full border border-white/10 px-2.5 py-1">{item.asin}</span>
-                        <span className="rounded-full border border-white/10 px-2.5 py-1">
-                          {item.marketplace_id}
-                        </span>
-                        <span className="rounded-full border border-white/10 px-2.5 py-1">
-                          Threshold {item.low_stock_threshold}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-3 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Available</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{item.available_quantity}</p>
-                      </div>
-                      <div className="rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-3 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Reserved</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{item.reserved_quantity}</p>
-                      </div>
-                      <div className="rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-3 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Inbound</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{item.inbound_quantity}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <span
-                        className={[
-                          "inline-flex rounded-full border px-3 py-1 text-xs font-medium capitalize",
-                          inventoryBadgeStyles[item.alert_status] ?? inventoryBadgeStyles.critical,
-                        ].join(" ")}
-                      >
-                        {formatStatusLabel(item.alert_status)}
-                      </span>
-                    </div>
-                    <div className="text-sm text-slate-300">
-                      {item.captured_at ? formatTimestamp(item.captured_at) : "Not synced"}
-                    </div>
-                  </article>
+                    item={item}
+                    variant="mobile"
+                    onSelect={() => navigate("/products")}
+                  />
                 ))}
               </div>
-            </div>
+
+              <div className="mt-6 hidden overflow-hidden rounded-[1.5rem] border border-white/10 lg:block">
+                <table className="min-w-full table-fixed border-collapse">
+                  <thead className="bg-white/[0.04]">
+                    <tr className="text-left text-xs uppercase tracking-[0.24em] text-slate-500">
+                      <th className="px-5 py-4 font-medium">Product</th>
+                      <th className="px-5 py-4 font-medium">Available</th>
+                      <th className="px-5 py-4 font-medium">Reserved</th>
+                      <th className="px-5 py-4 font-medium">Inbound</th>
+                      <th className="px-5 py-4 font-medium">Threshold</th>
+                      <th className="px-5 py-4 font-medium">Status</th>
+                      <th className="px-5 py-4 font-medium">Last updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredItems.map((item) => (
+                      <InventoryRow
+                        key={item.product_id}
+                        item={item}
+                        variant="desktop"
+                        onSelect={() => navigate("/products")}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </article>
 
@@ -324,28 +326,11 @@ export function InventoryPage() {
               </div>
             ) : (
               alerts.map((alert) => (
-                <div
+                <AlertCard
                   key={`${alert.product_id}-${alert.created_at}`}
-                  className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-white">{alert.product_name}</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">{alert.message}</p>
-                    </div>
-                    <span
-                      className={[
-                        "inline-flex rounded-full border px-3 py-1 text-xs font-medium capitalize",
-                        inventoryBadgeStyles[alert.severity] ?? inventoryBadgeStyles.critical,
-                      ].join(" ")}
-                    >
-                      {alert.severity}
-                    </span>
-                  </div>
-                  <div className="mt-3 text-xs text-slate-500">
-                    Available {alert.available_quantity} of threshold {alert.low_stock_threshold}
-                  </div>
-                </div>
+                  alert={alert}
+                  onViewProduct={() => navigate("/products")}
+                />
               ))
             )}
           </div>
