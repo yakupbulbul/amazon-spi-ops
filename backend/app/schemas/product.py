@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProductInventorySummaryResponse(BaseModel):
@@ -28,3 +29,19 @@ class ProductListItemResponse(BaseModel):
 
 class ProductListResponse(BaseModel):
     items: list[ProductListItemResponse]
+
+
+class ProductPriceUpdateRequest(BaseModel):
+    price_amount: Decimal = Field(gt=Decimal("0"))
+    price_currency: str = Field(min_length=3, max_length=8)
+
+
+class ProductStockUpdateRequest(BaseModel):
+    quantity: int = Field(ge=0)
+
+
+class ProductMutationResponse(BaseModel):
+    product_id: str
+    status: str
+    message: str
+    updated_at: datetime

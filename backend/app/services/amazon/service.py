@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
+from decimal import Decimal
 from typing import Any
 
 from app.core.config import Settings, settings
@@ -53,3 +54,30 @@ class AmazonSpApiService:
             seller_skus=seller_skus,
         )
 
+    def update_listing_price(
+        self,
+        *,
+        sku: str,
+        price: Decimal,
+        currency: str,
+        marketplace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.adapter.update_listing_price(
+            sku=sku,
+            price=price,
+            currency=currency,
+            marketplace_id=marketplace_id,
+        )
+
+    def update_listing_stock(
+        self,
+        *,
+        sku: str,
+        quantity: int,
+        marketplace_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.adapter.update_listing_stock(
+            sku=sku,
+            quantity=quantity,
+            marketplace_id=marketplace_id,
+        )

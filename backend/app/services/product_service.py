@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from decimal import Decimal
+from uuid import UUID
+
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, aliased
 
-from app.models.entities import InventorySnapshot, Product
+from app.models.entities import (
+    InventoryAlert,
+    InventorySnapshot,
+    PriceChangeLog,
+    Product,
+    StockChangeLog,
+    User,
+)
+from app.models.enums import AlertSeverity, InventoryAlertStatus, JobStatus
+from app.schemas.product import ProductMutationResponse
+from app.services.amazon.service import AmazonSpApiService
 from app.schemas.product import (
     ProductInventorySummaryResponse,
     ProductListItemResponse,
@@ -12,8 +26,9 @@ from app.schemas.product import (
 
 
 class ProductService:
-    def __init__(self, db_session: Session) -> None:
+    def __init__(self, db_session: Session, amazon_service: AmazonSpApiService) -> None:
         self.db_session = db_session
+        self.amazon_service = amazon_service
 
     def list_products(self) -> ProductListResponse:
         latest_snapshot = (
@@ -64,3 +79,189 @@ class ProductService:
                 for product, snapshot in rows
             ]
         )
+
+    def update_price(
+        self,
+        *,
+        product_id: UUID,
+        price_amount: Decimal,
+        price_currency: str,
+        requested_by: User,
+    ) -> ProductMutationResponse:
+        product = self._get_product(product_id)
+        old_price_amount = product.price_amount
+        timestamp = self._now()
+
+        try:
+            response_payload = self.amazon_service.update_listing_price(
+                sku=product.sku,
+                price=price_amount,
+                currency=price_currency.upper(),
+                marketplace_id=product.marketplace_id,
+            )
+            product.price_amount = price_amount
+            product.price_currency = price_currency.upper()
+            change_log = PriceChangeLog(
+                product_id=product.id,
+                requested_by_id=requested_by.id,
+                status=JobStatus.SUCCEEDED.value,
+                old_price_amount=old_price_amount,
+                new_price_amount=price_amount,
+                currency=price_currency.upper(),
+                response_payload=response_payload,
+                created_at=timestamp,
+            )
+            self.db_session.add(change_log)
+            self.db_session.commit()
+            return ProductMutationResponse(
+                product_id=str(product.id),
+                status=JobStatus.SUCCEEDED.value,
+                message=f"Updated {product.sku} price to {price_currency.upper()} {price_amount}.",
+                updated_at=timestamp,
+            )
+        except Exception as exc:
+            self.db_session.add(
+                PriceChangeLog(
+                    product_id=product.id,
+                    requested_by_id=requested_by.id,
+                    status=JobStatus.FAILED.value,
+                    old_price_amount=old_price_amount,
+                    new_price_amount=price_amount,
+                    currency=price_currency.upper(),
+                    error_message=str(exc),
+                    created_at=timestamp,
+                )
+            )
+            self.db_session.commit()
+            raise
+
+    def update_stock(
+        self,
+        *,
+        product_id: UUID,
+        quantity: int,
+        requested_by: User,
+    ) -> ProductMutationResponse:
+        product = self._get_product(product_id)
+        latest_snapshot = self.db_session.execute(
+            select(InventorySnapshot)
+            .where(InventorySnapshot.product_id == product.id)
+            .order_by(InventorySnapshot.captured_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        reserved_quantity = latest_snapshot.reserved_quantity if latest_snapshot else 0
+        inbound_quantity = latest_snapshot.inbound_quantity if latest_snapshot else 0
+        old_quantity = latest_snapshot.available_quantity if latest_snapshot else None
+        timestamp = self._now()
+
+        try:
+            response_payload = self.amazon_service.update_listing_stock(
+                sku=product.sku,
+                quantity=quantity,
+                marketplace_id=product.marketplace_id,
+            )
+            snapshot = InventorySnapshot(
+                product_id=product.id,
+                available_quantity=quantity,
+                reserved_quantity=reserved_quantity,
+                inbound_quantity=inbound_quantity,
+                alert_status=self._determine_alert_status(
+                    available_quantity=quantity,
+                    threshold=product.low_stock_threshold,
+                ),
+                captured_at=timestamp,
+            )
+            self.db_session.add(snapshot)
+            self.db_session.flush()
+            self._reconcile_alert(product=product, snapshot=snapshot)
+            self.db_session.add(
+                StockChangeLog(
+                    product_id=product.id,
+                    requested_by_id=requested_by.id,
+                    status=JobStatus.SUCCEEDED.value,
+                    old_quantity=old_quantity,
+                    new_quantity=quantity,
+                    response_payload=response_payload,
+                    created_at=timestamp,
+                )
+            )
+            self.db_session.commit()
+            return ProductMutationResponse(
+                product_id=str(product.id),
+                status=JobStatus.SUCCEEDED.value,
+                message=f"Updated {product.sku} stock to {quantity}.",
+                updated_at=timestamp,
+            )
+        except Exception as exc:
+            self.db_session.add(
+                StockChangeLog(
+                    product_id=product.id,
+                    requested_by_id=requested_by.id,
+                    status=JobStatus.FAILED.value,
+                    old_quantity=old_quantity,
+                    new_quantity=quantity,
+                    error_message=str(exc),
+                    created_at=timestamp,
+                )
+            )
+            self.db_session.commit()
+            raise
+
+    def _get_product(self, product_id: UUID) -> Product:
+        product = self.db_session.get(Product, product_id)
+        if product is None:
+            raise ValueError("Product not found.")
+        return product
+
+    def _reconcile_alert(self, *, product: Product, snapshot: InventorySnapshot) -> None:
+        unresolved_alerts = self.db_session.execute(
+            select(InventoryAlert)
+            .where(
+                InventoryAlert.product_id == product.id,
+                InventoryAlert.is_resolved.is_(False),
+            )
+            .order_by(InventoryAlert.created_at.desc())
+        ).scalars().all()
+
+        if snapshot.alert_status == InventoryAlertStatus.HEALTHY.value:
+            for alert in unresolved_alerts:
+                alert.is_resolved = True
+                alert.resolved_at = self._now()
+            return
+
+        for alert in unresolved_alerts:
+            alert.is_resolved = True
+            alert.resolved_at = self._now()
+
+        severity = (
+            AlertSeverity.CRITICAL.value
+            if snapshot.alert_status == InventoryAlertStatus.OUT_OF_STOCK.value
+            else AlertSeverity.WARNING.value
+        )
+        message = (
+            f"{product.sku} is out of stock."
+            if snapshot.alert_status == InventoryAlertStatus.OUT_OF_STOCK.value
+            else f"{product.sku} is at or below the low-stock threshold."
+        )
+        self.db_session.add(
+            InventoryAlert(
+                product_id=product.id,
+                snapshot_id=snapshot.id,
+                severity=severity,
+                message=message,
+                is_resolved=False,
+                created_at=self._now(),
+            )
+        )
+
+    @staticmethod
+    def _determine_alert_status(*, available_quantity: int, threshold: int) -> str:
+        if available_quantity <= 0:
+            return InventoryAlertStatus.OUT_OF_STOCK.value
+        if available_quantity <= threshold:
+            return InventoryAlertStatus.LOW.value
+        return InventoryAlertStatus.HEALTHY.value
+
+    @staticmethod
+    def _now() -> datetime:
+        return datetime.now(UTC)
