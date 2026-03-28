@@ -1,6 +1,8 @@
 import {
   AlertTriangle,
   Boxes,
+  CloudDownload,
+  RefreshCcw,
   PackageSearch,
   Search,
   X,
@@ -11,12 +13,16 @@ import {
   useEffect,
   useEffectEvent,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import { useAuth } from "../hooks/useAuth";
 import {
+  createCatalogImportJob,
+  getLatestCatalogImportJob,
   getProducts,
+  type CatalogImportJob,
   updateProductPrice,
   updateProductStock,
   type ProductListItem,
@@ -50,6 +56,21 @@ function getAlertLabel(product: ProductListItem): string {
   return status.replaceAll("_", " ");
 }
 
+function formatImportStatus(status: string): string {
+  return status.replaceAll("_", " ");
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) {
+    return "Not started";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 type MutationDialogState =
   | {
       type: "price";
@@ -63,9 +84,11 @@ type MutationDialogState =
 export function ProductsPage() {
   const { token } = useAuth();
   const [products, setProducts] = useState<ProductListItem[]>([]);
+  const [latestImportJob, setLatestImportJob] = useState<CatalogImportJob | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mutationMessage, setMutationMessage] = useState<string | null>(null);
   const [dialogState, setDialogState] = useState<MutationDialogState | null>(null);
@@ -73,6 +96,7 @@ export function ProductsPage() {
   const [currencyInput, setCurrencyInput] = useState("USD");
   const [stockInput, setStockInput] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const latestImportJobRef = useRef<CatalogImportJob | null>(null);
 
   const loadProducts = useEffectEvent(async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
     if (!token) {
@@ -98,15 +122,61 @@ export function ProductsPage() {
     }
   });
 
+  const loadLatestImportJob = useEffectEvent(
+    async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await getLatestCatalogImportJob(token);
+        if (!cancelled) {
+          const previousJob = latestImportJobRef.current;
+          latestImportJobRef.current = response;
+          startTransition(() => {
+            setLatestImportJob(response);
+          });
+
+          if (
+            response &&
+            response.status === "succeeded" &&
+            (previousJob?.id !== response.id || previousJob.status !== "succeeded")
+          ) {
+            await loadProducts();
+          }
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load import status.");
+        }
+      }
+    },
+  );
+
   useEffect(() => {
     let cancelled = false;
 
     void loadProducts({ cancelled });
+    void loadLatestImportJob({ cancelled });
 
     return () => {
       cancelled = true;
     };
-  }, [loadProducts, token]);
+  }, [loadLatestImportJob, loadProducts, token]);
+
+  useEffect(() => {
+    if (!token || !latestImportJob || !["pending", "running"].includes(latestImportJob.status)) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadLatestImportJob();
+    }, 4000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [latestImportJob, loadLatestImportJob, token]);
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
@@ -133,6 +203,16 @@ export function ProductsPage() {
     return availableQuantity <= product.low_stock_threshold;
   }).length;
 
+  const importButtonLabel = latestImportJob
+    ? latestImportJob.status === "pending" || latestImportJob.status === "running"
+      ? "Import running..."
+      : "Refresh Amazon Catalog"
+    : "Import from Amazon";
+
+  const isImportActive = latestImportJob
+    ? latestImportJob.status === "pending" || latestImportJob.status === "running"
+    : false;
+
   function openPriceDialog(product: ProductListItem) {
     setMutationMessage(null);
     setDialogState({ type: "price", product });
@@ -154,6 +234,27 @@ export function ProductsPage() {
     setPriceInput("");
     setCurrencyInput("USD");
     setStockInput("");
+  }
+
+  async function triggerCatalogImport() {
+    if (!token || isImporting || isImportActive) {
+      return;
+    }
+
+    setIsImporting(true);
+    setError(null);
+    setMutationMessage(null);
+
+    try {
+      const job = await createCatalogImportJob(token);
+      latestImportJobRef.current = job;
+      setLatestImportJob(job);
+      setMutationMessage("Amazon catalog import started. The page will refresh when the job completes.");
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Unable to start Amazon import.");
+    } finally {
+      setIsImporting(false);
+    }
   }
 
   async function submitMutation() {
@@ -200,13 +301,13 @@ export function ProductsPage() {
     <div className="space-y-8">
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
         <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,_rgba(59,130,246,0.18),_rgba(15,23,42,0.95)_42%,_rgba(2,6,23,1)_100%)] p-6 shadow-2xl shadow-black/30 sm:p-8">
-          <p className="text-xs uppercase tracking-[0.32em] text-sky-100/70">Catalog workspace</p>
+          <p className="text-xs uppercase tracking-[0.32em] text-sky-100/70">Amazon catalog mirror</p>
           <h2 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
-            Seller catalog search with inventory posture and listing identifiers.
+            Import live seller listings and manage the mirrored catalog from one workspace.
           </h2>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-            The catalog view now supports price and stock changes with authenticated backend
-            mutations, audit logging, and immediate refresh of the local product state.
+            The products view now imports real Amazon listings, tracks the latest import job, and
+            keeps price and stock mutations available for mirrored catalog items.
           </p>
         </div>
 
@@ -214,14 +315,86 @@ export function ProductsPage() {
           <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5">
             <p className="text-sm text-slate-400">Visible products</p>
             <p className="mt-4 text-4xl font-semibold text-white">{filteredProducts.length}</p>
-            <p className="mt-3 text-sm leading-6 text-slate-500">Filtered from the local product catalog.</p>
+            <p className="mt-3 text-sm leading-6 text-slate-500">Filtered from the mirrored Amazon catalog.</p>
           </article>
           <article className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-slate-400">At or below threshold</p>
-            <p className="mt-4 text-4xl font-semibold text-white">{lowStockCount}</p>
-            <p className="mt-3 text-sm leading-6 text-slate-500">Products needing stock attention.</p>
+            <p className="text-sm text-slate-400">Latest import status</p>
+            <p className="mt-4 text-2xl font-semibold capitalize text-white">
+              {latestImportJob ? formatImportStatus(latestImportJob.status) : "Not started"}
+            </p>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              {latestImportJob
+                ? `${latestImportJob.processed_count} processed${latestImportJob.total_expected ? ` of ${latestImportJob.total_expected}` : ""}.`
+                : "Run the first Amazon import to replace the sample catalog."}
+            </p>
           </article>
         </div>
+      </section>
+
+      <section className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Import control</p>
+            <h3 className="mt-2 text-xl font-semibold text-white">Amazon listings sync</h3>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+              Import all seller listings for marketplace {latestImportJob?.marketplace_id ?? "A1PA6795UKMFR9"}.
+              The job runs in the background and the catalog refreshes automatically when it finishes.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void triggerCatalogImport()}
+            disabled={isImporting || isImportActive}
+            className="inline-flex items-center justify-center gap-2 rounded-[1.25rem] bg-amber-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isImportActive ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+            <span>{isImporting ? "Queueing import..." : importButtonLabel}</span>
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+          <article className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Job</p>
+            <p className="mt-3 text-base font-medium capitalize text-white">
+              {latestImportJob ? formatImportStatus(latestImportJob.status) : "Awaiting first import"}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Started {formatTimestamp(latestImportJob?.started_at ?? latestImportJob?.created_at ?? null)}
+            </p>
+          </article>
+          <article className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Processed</p>
+            <p className="mt-3 text-3xl font-semibold text-white">
+              {latestImportJob?.processed_count ?? 0}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              {latestImportJob?.total_expected
+                ? `Target ${latestImportJob.total_expected} listings`
+                : "Total estimate available after the first page"}
+            </p>
+          </article>
+          <article className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Created / Updated</p>
+            <p className="mt-3 text-3xl font-semibold text-white">
+              {(latestImportJob?.created_count ?? 0) + (latestImportJob?.updated_count ?? 0)}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              {latestImportJob?.created_count ?? 0} created, {latestImportJob?.updated_count ?? 0} updated
+            </p>
+          </article>
+          <article className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Low stock</p>
+            <p className="mt-3 text-3xl font-semibold text-white">{lowStockCount}</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Products at or below threshold.</p>
+          </article>
+        </div>
+
+        {latestImportJob?.error_message ? (
+          <div className="mt-4 flex items-start gap-3 rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{latestImportJob.error_message}</span>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
@@ -282,6 +455,9 @@ export function ProductsPage() {
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
                       <span className="rounded-full border border-white/10 px-2.5 py-1">
                         {product.brand ?? "Unbranded"}
+                      </span>
+                      <span className="rounded-full border border-white/10 px-2.5 py-1 capitalize">
+                        {product.source.replaceAll("_", " ")}
                       </span>
                       <span className="rounded-full border border-white/10 px-2.5 py-1">
                         Threshold {product.low_stock_threshold}
