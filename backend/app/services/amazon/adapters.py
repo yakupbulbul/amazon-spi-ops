@@ -15,7 +15,7 @@ class AmazonSpApiAdapter(ABC):
         *,
         marketplace_id: str | None = None,
         next_token: str | None = None,
-        page_size: int = 50,
+        page_size: int = 20,
     ) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -78,7 +78,7 @@ class LiveAmazonSpApiAdapter(AmazonSpApiAdapter):
         *,
         marketplace_id: str | None = None,
         next_token: str | None = None,
-        page_size: int = 50,
+        page_size: int = 20,
     ) -> dict[str, Any]:
         resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
         params: dict[str, Any] = {
@@ -87,7 +87,7 @@ class LiveAmazonSpApiAdapter(AmazonSpApiAdapter):
             "includedData": "summaries,attributes,offers,fulfillmentAvailability",
         }
         if next_token:
-            params["nextToken"] = next_token
+            params["pageToken"] = next_token
 
         return self.client.request(
             "GET",
@@ -222,7 +222,7 @@ class MockAmazonSpApiAdapter(AmazonSpApiAdapter):
         *,
         marketplace_id: str | None = None,
         next_token: str | None = None,
-        page_size: int = 50,
+        page_size: int = 20,
     ) -> dict[str, Any]:
         resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
         items = [
