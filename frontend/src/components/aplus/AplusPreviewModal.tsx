@@ -2,13 +2,15 @@ import { FileStack, MonitorSmartphone, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import type { AplusDraftPayload, AplusLanguage } from "../../lib/api";
+import type { AplusAsset, AplusDraftPayload, AplusLanguage } from "../../lib/api";
 import { AplusAmazonPreview } from "./AplusAmazonPreview";
 import { formatLanguageLabel } from "./languages";
+import { resolveModulePreviewImageUrl } from "./previewImage";
 
 type AplusPreviewModalProps = {
   draft: AplusDraftPayload;
   language: AplusLanguage;
+  assets: AplusAsset[];
   onClose: () => void;
   returnFocusTo: HTMLElement | null;
 };
@@ -18,6 +20,7 @@ type PreviewMode = "device" | "stack";
 export function AplusPreviewModal({
   draft,
   language,
+  assets,
   onClose,
   returnFocusTo,
 }: AplusPreviewModalProps) {
@@ -146,9 +149,9 @@ export function AplusPreviewModal({
 
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
             {mode === "device" ? (
-              <AplusAmazonPreview draft={draft} language={language} />
+              <AplusAmazonPreview draft={draft} language={language} assets={assets} />
             ) : (
-              <AplusModuleStackPreview draft={draft} language={language} />
+              <AplusModuleStackPreview draft={draft} language={language} assets={assets} />
             )}
           </div>
         </section>
@@ -189,9 +192,11 @@ function PreviewModeButton({
 function AplusModuleStackPreview({
   draft,
   language,
+  assets,
 }: {
   draft: AplusDraftPayload;
   language: AplusLanguage;
+  assets: AplusAsset[];
 }) {
   return (
     <div className="mx-auto max-w-5xl space-y-4 rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.84),rgba(2,6,23,0.96))] p-4 sm:p-6">
@@ -229,7 +234,24 @@ function AplusModuleStackPreview({
           >
             <div className="rounded-[1.1rem] bg-[linear-gradient(135deg,rgba(226,232,240,0.2),rgba(248,250,252,0.06))] p-4">
               <p className="text-xs uppercase tracking-[0.22em] text-slate-400">{module.module_type}</p>
-              <p className="mt-3 text-sm leading-6 text-slate-300">{module.image_brief}</p>
+              <div className="mt-3 overflow-hidden rounded-[1rem] border border-white/10 bg-slate-950/60">
+                {resolveModulePreviewImageUrl(module, assets) ? (
+                  <img
+                    src={resolveModulePreviewImageUrl(module, assets) ?? undefined}
+                    alt={module.image_brief}
+                    className="aspect-[4/3] h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex aspect-[4/3] items-center justify-center px-4 text-center text-sm leading-6 text-slate-500">
+                    {module.image_brief}
+                  </div>
+                )}
+              </div>
+              {module.overlay_text ? (
+                <div className="mt-3 rounded-full bg-white/[0.06] px-3 py-2 text-xs text-slate-200">
+                  Overlay: {module.overlay_text}
+                </div>
+              ) : null}
             </div>
 
             <div>
