@@ -1,56 +1,65 @@
-import { LayoutDashboard, PackageSearch } from "lucide-react";
-import { Link, Outlet } from "react-router-dom";
+import { useState } from "react";
+import { Menu, X } from "lucide-react";
+import { Outlet } from "react-router-dom";
 
-const routes = [
-  { to: "/", label: "Dashboard" },
-  { to: "/products", label: "Products" },
-  { to: "/aplus", label: "A+ Content Studio" },
-  { to: "/inventory", label: "Inventory" },
-  { to: "/notifications", label: "Notifications" },
-  { to: "/settings", label: "Settings" },
-];
+import { SidebarNav } from "./components/layout/SidebarNav";
+import { TopBar } from "./components/layout/TopBar";
 
 export function App() {
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-900/80">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-amber-400/15 p-2 text-amber-300">
-              <LayoutDashboard className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Admin</p>
-              <h1 className="text-lg font-semibold">Amazon Seller Ops</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-full border border-slate-800 px-3 py-2 text-sm text-slate-300">
-            <PackageSearch className="h-4 w-4" />
-            Phase 1 scaffold
-          </div>
-        </div>
-      </header>
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-6 py-8 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4">
-          <nav className="space-y-2">
-            {routes.map((route) => (
-              <Link
-                key={route.to}
-                to={route.to}
-                className="block rounded-2xl px-4 py-3 text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
-              >
-                {route.label}
-              </Link>
-            ))}
-          </nav>
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(245,158,11,0.18),_transparent_28%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#111827_100%)] text-slate-100">
+      <div className="mx-auto flex min-h-screen max-w-[1600px]">
+        <aside className="hidden w-80 shrink-0 border-r border-white/10 bg-slate-950/60 backdrop-blur xl:block">
+          <SidebarNav />
         </aside>
 
-        <main className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6">
-          <Outlet />
-        </main>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar
+            leftSlot={
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 xl:hidden"
+                aria-label="Open navigation"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+            }
+          />
+
+          <main className="flex-1 px-4 pb-8 pt-4 sm:px-6 lg:px-8">
+            <div className="min-h-[calc(100vh-8rem)] rounded-[2rem] border border-white/10 bg-slate-950/35 p-4 shadow-2xl shadow-black/20 backdrop-blur sm:p-6 lg:p-8">
+              <Outlet />
+            </div>
+          </main>
+        </div>
       </div>
+
+      {mobileNavOpen ? (
+        <div className="fixed inset-0 z-50 xl:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+            onClick={() => setMobileNavOpen(false)}
+            aria-label="Close navigation"
+          />
+          <div className="absolute inset-y-0 left-0 w-[88%] max-w-sm border-r border-white/10 bg-slate-950 p-4 shadow-2xl shadow-black/50">
+            <div className="mb-4 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10"
+                aria-label="Close navigation"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <SidebarNav onNavigate={() => setMobileNavOpen(false)} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
-
