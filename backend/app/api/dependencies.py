@@ -33,7 +33,7 @@ def get_amazon_service() -> AmazonSpApiService:
 
 
 def get_product_service(db_session: Session = Depends(get_db_session)) -> ProductService:
-    return ProductService(db_session)
+    return ProductService(db_session, AmazonSpApiService())
 
 
 def get_inventory_service(
