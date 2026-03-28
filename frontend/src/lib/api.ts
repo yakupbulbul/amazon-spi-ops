@@ -187,6 +187,37 @@ export type AplusPublishResponse = {
   prepared_payload: Record<string, unknown>;
 };
 
+export type SlackNotificationLog = {
+  id: string;
+  notification_type: string;
+  status: string;
+  channel_label: string | null;
+  message_preview: string;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type EventLogItem = {
+  id: string;
+  event_type: string;
+  source: string;
+  status: string;
+  payload: Record<string, unknown>;
+  occurred_at: string;
+  notifications: SlackNotificationLog[];
+};
+
+export type EventListResponse = {
+  items: EventLogItem[];
+};
+
+export type SlackTestResponse = {
+  event_id: string;
+  notification_id: string;
+  status: string;
+  message: string;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function apiRequest<T>(
@@ -351,6 +382,23 @@ export async function publishAplusDraft(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ draft_id: draftId }),
+  });
+}
+
+export async function getEvents(token: string): Promise<EventListResponse> {
+  return apiRequest<EventListResponse>("/events", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function sendSlackTestNotification(token: string): Promise<SlackTestResponse> {
+  return apiRequest<SlackTestResponse>("/notifications/slack/test", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
 }
 

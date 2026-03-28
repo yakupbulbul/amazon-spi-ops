@@ -9,8 +9,9 @@ import { AplusStudioPage } from "./pages/AplusStudioPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProductsPage } from "./pages/ProductsPage";
-import { SectionPage } from "./pages/SectionPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import "./index.css";
 
 const router = createBrowserRouter([
@@ -40,31 +41,11 @@ const router = createBrowserRouter([
               },
               {
                 path: "notifications",
-                element: (
-                  <SectionPage
-                    eyebrow="Delivery monitoring"
-                    title="Notifications"
-                    description="This area will track Slack dispatch history, event payloads, and message delivery outcomes across seller operations."
-                    bullets={[
-                      "Prepared for Slack webhook event logs and filters.",
-                      "Prepared for publish, price, stock, and low-stock notification timelines.",
-                    ]}
-                  />
-                ),
+                element: <NotificationsPage />,
               },
               {
                 path: "settings",
-                element: (
-                  <SectionPage
-                    eyebrow="Configuration"
-                    title="Settings"
-                    description="Application settings, environment diagnostics, and outbound connection checks will live here."
-                    bullets={[
-                      "Reserved for webhook test actions and marketplace configuration.",
-                      "Reserved for protected admin settings once auth scaffolding lands.",
-                    ]}
-                  />
-                ),
+                element: <SettingsPage />,
               },
             ],
           },
