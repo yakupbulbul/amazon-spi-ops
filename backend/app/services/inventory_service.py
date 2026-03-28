@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, aliased
@@ -16,6 +17,7 @@ from app.schemas.inventory import (
     InventorySyncResponse,
 )
 from app.services.amazon.service import AmazonSpApiService
+from app.services.notification_service import NotificationService
 
 
 class InventoryService:
@@ -115,6 +117,8 @@ class InventoryService:
             .order_by(Product.title.asc())
         ).scalars().all()
         preserve_missing_snapshot = bool(response.get("mock"))
+        notification_service = NotificationService(self.db_session)
+        notification_ids: list[UUID] = []
 
         synced_count = 0
         for product in products:
@@ -155,10 +159,29 @@ class InventoryService:
             )
             self.db_session.add(snapshot)
             self.db_session.flush()
-            self._reconcile_alert(product=product, snapshot=snapshot)
+            alert = self._reconcile_alert(product=product, snapshot=snapshot)
+            if alert is not None:
+                notification = notification_service.queue_event_notification(
+                    event_type="inventory_alert",
+                    source="inventory_sync",
+                    event_status=alert.severity,
+                    event_payload={
+                        "sku": product.sku,
+                        "asin": product.asin,
+                        "available_quantity": available_quantity,
+                        "threshold": product.low_stock_threshold,
+                        "message": alert.message,
+                    },
+                    notification_type="low_stock_threshold_reached",
+                    message_preview=alert.message,
+                    occurred_at=snapshot.captured_at,
+                )
+                notification_ids.append(notification.id)
             synced_count += 1
 
         self.db_session.commit()
+        for notification_id in notification_ids:
+            notification_service.dispatch_notification(notification_id)
         return InventorySyncResponse(
             status="completed",
             source="amazon_mock" if response.get("mock") else "amazon_live",
@@ -245,7 +268,12 @@ class InventoryService:
                 )
             )
 
-    def _reconcile_alert(self, *, product: Product, snapshot: InventorySnapshot) -> None:
+    def _reconcile_alert(
+        self,
+        *,
+        product: Product,
+        snapshot: InventorySnapshot,
+    ) -> InventoryAlert | None:
         unresolved_alerts = self.db_session.execute(
             select(InventoryAlert)
             .where(
@@ -259,7 +287,7 @@ class InventoryService:
             for alert in unresolved_alerts:
                 alert.is_resolved = True
                 alert.resolved_at = self._now()
-            return
+            return None
 
         for alert in unresolved_alerts:
             alert.is_resolved = True
@@ -275,16 +303,17 @@ class InventoryService:
             if snapshot.alert_status == InventoryAlertStatus.OUT_OF_STOCK.value
             else f"{product.sku} is at or below the low-stock threshold."
         )
-        self.db_session.add(
-            InventoryAlert(
-                product_id=product.id,
-                snapshot_id=snapshot.id,
-                severity=severity,
-                message=message,
-                is_resolved=False,
-                created_at=self._now(),
-            )
+        alert = InventoryAlert(
+            product_id=product.id,
+            snapshot_id=snapshot.id,
+            severity=severity,
+            message=message,
+            is_resolved=False,
+            created_at=self._now(),
         )
+        self.db_session.add(alert)
+        self.db_session.flush()
+        return alert
 
     @staticmethod
     def _determine_alert_status(*, available_quantity: int, threshold: int) -> str:

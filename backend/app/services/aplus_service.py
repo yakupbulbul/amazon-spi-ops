@@ -16,6 +16,7 @@ from app.schemas.aplus import (
 )
 from app.services.ai.openai_service import OpenAiAplusService
 from app.services.amazon.service import AmazonSpApiService
+from app.services.notification_service import NotificationService
 from app.services.product_service import ProductService
 
 
@@ -95,36 +96,82 @@ class AplusService:
     def publish_draft(self, *, draft_id: UUID) -> AplusPublishResponse:
         draft = self._get_draft(draft_id)
         product = self._get_product(draft.product_id)
-        validated_payload = AplusDraftPayload.model_validate(
-            draft.validated_payload or draft.draft_payload
-        )
-        prepared_payload = self._build_amazon_payload(product=product, draft_payload=validated_payload)
+        notification_service = NotificationService(self.db_session)
+        timestamp = self._now()
 
-        publish_job = AplusPublishJob(
-            draft_id=draft.id,
-            status=JobStatus.SUCCEEDED.value,
-            external_submission_id="preview-only",
-            submitted_at=self._now(),
-            completed_at=self._now(),
-            created_at=self._now(),
-        )
-        self.db_session.add(publish_job)
-        draft.status = DraftStatus.READY_TO_PUBLISH.value
-        draft.validated_payload = validated_payload.model_dump(mode="json")
-        self.db_session.commit()
-        self.db_session.refresh(draft)
-        self.db_session.refresh(publish_job)
+        try:
+            validated_payload = AplusDraftPayload.model_validate(
+                draft.validated_payload or draft.draft_payload
+            )
+            prepared_payload = self._build_amazon_payload(product=product, draft_payload=validated_payload)
 
-        return AplusPublishResponse(
-            draft=self._serialize_draft(draft=draft, product=product),
-            publish_job_id=str(publish_job.id),
-            status=publish_job.status,
-            message=(
-                "Prepared an Amazon-compatible A+ payload. "
-                "Live submission remains account-dependent and can be added to the publish adapter."
-            ),
-            prepared_payload=prepared_payload,
-        )
+            publish_job = AplusPublishJob(
+                draft_id=draft.id,
+                status=JobStatus.SUCCEEDED.value,
+                external_submission_id="preview-only",
+                submitted_at=timestamp,
+                completed_at=timestamp,
+                created_at=timestamp,
+            )
+            self.db_session.add(publish_job)
+            draft.status = DraftStatus.READY_TO_PUBLISH.value
+            draft.validated_payload = validated_payload.model_dump(mode="json")
+            notification = notification_service.queue_event_notification(
+                event_type="aplus_publish",
+                source="aplus_studio",
+                event_status=JobStatus.SUCCEEDED.value,
+                event_payload={
+                    "sku": product.sku,
+                    "asin": product.asin,
+                    "draft_id": str(draft.id),
+                    "marketplace_id": product.marketplace_id,
+                },
+                notification_type="aplus_publish_success",
+                message_preview=f"A+ publish payload prepared for {product.sku}.",
+                occurred_at=timestamp,
+            )
+            self.db_session.commit()
+            notification_service.dispatch_notification(notification.id)
+            self.db_session.refresh(draft)
+            self.db_session.refresh(publish_job)
+
+            return AplusPublishResponse(
+                draft=self._serialize_draft(draft=draft, product=product),
+                publish_job_id=str(publish_job.id),
+                status=publish_job.status,
+                message=(
+                    "Prepared an Amazon-compatible A+ payload. "
+                    "Live submission remains account-dependent and can be added to the publish adapter."
+                ),
+                prepared_payload=prepared_payload,
+            )
+        except Exception as exc:
+            publish_job = AplusPublishJob(
+                draft_id=draft.id,
+                status=JobStatus.FAILED.value,
+                error_message=str(exc)[:1024],
+                submitted_at=timestamp,
+                completed_at=timestamp,
+                created_at=timestamp,
+            )
+            self.db_session.add(publish_job)
+            notification = notification_service.queue_event_notification(
+                event_type="aplus_publish",
+                source="aplus_studio",
+                event_status=JobStatus.FAILED.value,
+                event_payload={
+                    "sku": product.sku,
+                    "asin": product.asin,
+                    "draft_id": str(draft.id),
+                    "error": str(exc),
+                },
+                notification_type="aplus_publish_failure",
+                message_preview=f"A+ publish preparation failed for {product.sku}.",
+                occurred_at=timestamp,
+            )
+            self.db_session.commit()
+            notification_service.dispatch_notification(notification.id)
+            raise
 
     def _build_amazon_payload(
         self,
