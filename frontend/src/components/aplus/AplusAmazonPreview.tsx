@@ -103,6 +103,8 @@ export function AplusAmazonPreview({ draft, language }: AplusAmazonPreviewProps)
 
 function ModulePreviewCard({ module }: { module: AplusModulePayload }) {
   if (module.module_type === "comparison") {
+    const rows = module.bullets.map(parseComparisonRow);
+
     return (
       <article className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
         <div className="flex items-center gap-2 text-slate-500">
@@ -117,14 +119,18 @@ function ModulePreviewCard({ module }: { module: AplusModulePayload }) {
             <div className="border-l border-slate-200 px-4 py-3">This product</div>
             <div className="border-l border-slate-200 px-4 py-3">Generic alternative</div>
           </div>
-          {module.bullets.map((bullet) => (
+          {rows.map((row) => (
             <div
-              key={bullet}
+              key={`${row.criterion}-${row.thisProduct}-${row.genericAlternative}`}
               className="grid grid-cols-[1.2fr_1fr_1fr] border-t border-slate-200 text-sm text-slate-700"
             >
-              <div className="px-4 py-3">{bullet}</div>
-              <div className="border-l border-slate-200 px-4 py-3 text-emerald-700">Highlighted benefit</div>
-              <div className="border-l border-slate-200 px-4 py-3 text-slate-500">Basic alternative</div>
+              <div className="px-4 py-3">{row.criterion}</div>
+              <div className="border-l border-slate-200 px-4 py-3 text-emerald-700">
+                {row.thisProduct || "Highlighted benefit"}
+              </div>
+              <div className="border-l border-slate-200 px-4 py-3 text-slate-500">
+                {row.genericAlternative || "Basic alternative"}
+              </div>
             </div>
           ))}
         </div>
@@ -182,4 +188,20 @@ function extractOverlayText(imageBrief?: string): string | null {
 
   const match = imageBrief.match(/(?:Overlay-Text|overlay text):\s*['"]([^'"]+)['"]/i);
   return match?.[1] ?? null;
+}
+
+function parseComparisonRow(value: string): {
+  criterion: string;
+  thisProduct: string;
+  genericAlternative: string;
+} {
+  const [criterion = "", thisProduct = "", genericAlternative = ""] = value
+    .split("|")
+    .map((item) => item.trim());
+
+  return {
+    criterion,
+    thisProduct,
+    genericAlternative,
+  };
 }
