@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,8 +27,11 @@ class Settings(BaseSettings):
     seller_id: str = Field(default="", alias="SELLER_ID")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     slack_webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
-    aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
-    sp_api_endpoint: str = Field(default="", alias="SP_API_ENDPOINT")
+    aws_region: str = Field(default="", alias="AWS_REGION")
+    sp_api_endpoint: str = Field(
+        default="",
+        validation_alias=AliasChoices("SP_API_ENDPOINT", "SPAPI_ENDPOINT"),
+    )
     sp_api_token_url: str = Field(default="https://api.amazon.com/auth/o2/token", alias="SP_API_TOKEN_URL")
     admin_email: str = Field(default="admin@example.com", alias="ADMIN_EMAIL")
     admin_password: str = Field(default="change-me-admin", alias="ADMIN_PASSWORD")
@@ -40,6 +43,21 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def apply_amazon_endpoint_defaults(self) -> "Settings":
+        if self.aws_region:
+            return self
+
+        endpoint = self.sp_api_endpoint.lower()
+        if "sellingpartnerapi-eu" in endpoint:
+            self.aws_region = "eu-west-1"
+        elif "sellingpartnerapi-fe" in endpoint:
+            self.aws_region = "us-west-2"
+        else:
+            self.aws_region = "us-east-1"
+
+        return self
 
 
 @lru_cache
