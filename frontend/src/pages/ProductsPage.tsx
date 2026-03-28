@@ -7,7 +7,6 @@ import {
   PackageSearch,
   Search,
   ShoppingBag,
-  X,
 } from "lucide-react";
 import {
   startTransition,
@@ -19,6 +18,7 @@ import {
   useState,
 } from "react";
 
+import { ProductEditDrawer } from "../components/products/ProductEditDrawer";
 import { useAuth } from "../hooks/useAuth";
 import {
   createCatalogImportJob,
@@ -142,6 +142,7 @@ export function ProductsPage() {
   const [stockInput, setStockInput] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const latestImportJobRef = useRef<CatalogImportJob | null>(null);
+  const dialogTriggerRef = useRef<HTMLElement | null>(null);
 
   const loadProducts = useEffectEvent(async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
     if (!token) {
@@ -273,17 +274,19 @@ export function ProductsPage() {
     ? latestImportJob.status === "pending" || latestImportJob.status === "running"
     : false;
 
-  function openPriceDialog(product: ProductListItem) {
+  function openPriceDialog(product: ProductListItem, triggerElement: HTMLElement) {
     setMutationMessage(null);
     setDialogError(null);
+    dialogTriggerRef.current = triggerElement;
     setDialogState({ type: "price", product });
     setPriceInput(product.price_amount ?? "");
     setCurrencyInput(getDefaultCurrency(product));
   }
 
-  function openStockDialog(product: ProductListItem) {
+  function openStockDialog(product: ProductListItem, triggerElement: HTMLElement) {
     setMutationMessage(null);
     setDialogError(null);
+    dialogTriggerRef.current = triggerElement;
     setDialogState({ type: "stock", product });
     setStockInput(String(product.inventory?.available_quantity ?? 0));
   }
@@ -648,7 +651,7 @@ export function ProductsPage() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => openPriceDialog(product)}
+                      onClick={(event) => openPriceDialog(product, event.currentTarget)}
                       className="inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20"
                     >
                       <PencilLine className="h-3.5 w-3.5" />
@@ -656,7 +659,7 @@ export function ProductsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => openStockDialog(product)}
+                      onClick={(event) => openStockDialog(product, event.currentTarget)}
                       className="inline-flex items-center gap-2 rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-100 transition hover:bg-amber-400/20"
                     >
                       <ShoppingBag className="h-3.5 w-3.5" />
@@ -677,164 +680,25 @@ export function ProductsPage() {
       ) : null}
 
       {dialogState ? (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm"
-            onClick={closeDialog}
-            aria-label="Close dialog"
-          />
-          <section className="relative z-10 flex h-full w-full max-w-2xl flex-col border-l border-white/10 bg-slate-950 shadow-2xl shadow-black/50">
-            <div className="border-b border-white/10 bg-[linear-gradient(135deg,_rgba(245,158,11,0.14),_rgba(15,23,42,0.96)_35%,_rgba(2,6,23,1)_100%)] px-5 py-5 sm:px-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                    {dialogState.type === "price" ? "Listing price editor" : "Available stock editor"}
-                  </p>
-                  <h4 className="mt-2 text-2xl font-semibold text-white">
-                    {getDialogTitle(dialogState)}
-                  </h4>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    {getDialogIntro(dialogState)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeDialog}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10"
-                  aria-label="Close dialog"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-              <div className="grid gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-2">
-                <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Product</p>
-                  <p className="mt-2 text-sm font-medium text-white">{dialogState.product.title}</p>
-                  <p className="mt-2 text-xs text-slate-400">
-                    SKU {dialogState.product.sku}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    ASIN {dialogState.product.asin}
-                  </p>
-                </div>
-                <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Marketplace</p>
-                  <p className="mt-2 text-sm font-medium text-white">
-                    {dialogState.product.marketplace_id}
-                  </p>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Current value
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-white">
-                    {getCurrentValueLabel(dialogState)}
-                  </p>
-                </div>
-              </div>
-
-              <form
-                className="mt-6"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void submitMutation();
-                }}
-              >
-                <div className="rounded-[1.25rem] border border-sky-300/15 bg-sky-500/10 px-4 py-3 text-sm leading-6 text-sky-100">
-                  Step 1: update the value below.
-                  <br />
-                  Step 2: review the "New value to save" box.
-                  <br />
-                  Step 3: click the save button at the bottom of this panel.
-                </div>
-
-                <div className="mt-6 space-y-5">
-                  {dialogState.type === "price" ? (
-                    <>
-                      <label className="block space-y-2">
-                        <span className="text-sm text-slate-300">New price amount</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={priceInput}
-                          onChange={(event) => setPriceInput(event.target.value)}
-                          className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none"
-                        />
-                      </label>
-                      <label className="block space-y-2">
-                        <span className="text-sm text-slate-300">Currency code</span>
-                        <input
-                          type="text"
-                          value={currencyInput}
-                          onChange={(event) => setCurrencyInput(event.target.value)}
-                          maxLength={3}
-                          className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-base uppercase text-white outline-none"
-                        />
-                        <p className="text-xs text-slate-500">
-                          Defaults from the product marketplace when no saved currency exists yet.
-                        </p>
-                      </label>
-                    </>
-                  ) : (
-                    <label className="block space-y-2">
-                      <span className="text-sm text-slate-300">New available quantity</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={stockInput}
-                        onChange={(event) => setStockInput(event.target.value)}
-                        className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none"
-                      />
-                    </label>
-                  )}
-                </div>
-
-                <div className="mt-6 rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">New value to save</p>
-                  <p className="mt-2 text-xl font-semibold text-white">
-                    {getPendingValueLabel(dialogState, priceInput, currencyInput, stockInput)}
-                  </p>
-                </div>
-
-                {dialogError ? (
-                  <div className="mt-6 flex items-start gap-3 rounded-[1.25rem] border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{dialogError}</span>
-                  </div>
-                ) : null}
-
-                <div className="mt-6 rounded-[1.25rem] border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                  Save will send this change to the backend immediately and record an audit log.
-                </div>
-
-                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                  <button
-                    type="button"
-                    onClick={closeDialog}
-                    className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-200 transition hover:bg-white/[0.08]"
-                  >
-                    Close panel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isMutating}
-                    className="rounded-[1.25rem] bg-amber-300 px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {isMutating
-                      ? "Saving..."
-                      : dialogState.type === "price"
-                        ? "Save price change"
-                        : "Save stock change"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </section>
-        </div>
+        <ProductEditDrawer
+          product={dialogState.product}
+          type={dialogState.type}
+          isMutating={isMutating}
+          dialogError={dialogError}
+          title={getDialogTitle(dialogState)}
+          intro={getDialogIntro(dialogState)}
+          currentValueLabel={getCurrentValueLabel(dialogState)}
+          pendingValueLabel={getPendingValueLabel(dialogState, priceInput, currencyInput, stockInput)}
+          priceInput={priceInput}
+          currencyInput={currencyInput}
+          stockInput={stockInput}
+          onPriceChange={setPriceInput}
+          onCurrencyChange={setCurrencyInput}
+          onStockChange={setStockInput}
+          onClose={closeDialog}
+          onSubmit={() => void submitMutation()}
+          returnFocusTo={dialogTriggerRef.current}
+        />
       ) : null}
     </div>
   );
