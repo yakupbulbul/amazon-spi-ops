@@ -3,7 +3,7 @@ SHELL := /bin/zsh
 .PHONY: install-backend install-frontend dev-backend dev-frontend lint test up down
 
 install-backend:
-	cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install --upgrade pip && pip install -e ".[dev]"
+	cd backend && python3.11 -m venv .venv && source .venv/bin/activate && pip install --upgrade pip && pip install -e ".[dev]"
 
 install-frontend:
 	cd frontend && npm install
@@ -26,4 +26,3 @@ up:
 
 down:
 	docker compose down
-
