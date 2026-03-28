@@ -25,6 +25,7 @@ from app.schemas.product import (
 )
 from app.services.amazon.service import AmazonSpApiService
 from app.services.catalog_import_service import CatalogImportService
+from app.services.notification_service import NotificationService
 
 
 class ProductService:
@@ -102,6 +103,7 @@ class ProductService:
         product = self._get_product(product_id)
         old_price_amount = product.price_amount
         timestamp = self._now()
+        notification_service = NotificationService(self.db_session)
 
         try:
             response_payload = self.amazon_service.update_listing_price(
@@ -123,7 +125,26 @@ class ProductService:
                 created_at=timestamp,
             )
             self.db_session.add(change_log)
+            notification = notification_service.queue_event_notification(
+                event_type="price_update",
+                source="products_api",
+                event_status=JobStatus.SUCCEEDED.value,
+                event_payload={
+                    "sku": product.sku,
+                    "asin": product.asin,
+                    "old_price_amount": str(old_price_amount) if old_price_amount is not None else None,
+                    "new_price_amount": str(price_amount),
+                    "currency": price_currency.upper(),
+                },
+                notification_type="price_update_success",
+                message_preview=(
+                    f"Price update succeeded for {product.sku}: "
+                    f"{price_currency.upper()} {price_amount}."
+                ),
+                occurred_at=timestamp,
+            )
             self.db_session.commit()
+            notification_service.dispatch_notification(notification.id)
             return ProductMutationResponse(
                 product_id=str(product.id),
                 status=JobStatus.SUCCEEDED.value,
@@ -143,7 +164,23 @@ class ProductService:
                     created_at=timestamp,
                 )
             )
+            notification = notification_service.queue_event_notification(
+                event_type="price_update",
+                source="products_api",
+                event_status=JobStatus.FAILED.value,
+                event_payload={
+                    "sku": product.sku,
+                    "asin": product.asin,
+                    "attempted_price_amount": str(price_amount),
+                    "currency": price_currency.upper(),
+                    "error": str(exc),
+                },
+                notification_type="price_update_failure",
+                message_preview=f"Price update failed for {product.sku}.",
+                occurred_at=timestamp,
+            )
             self.db_session.commit()
+            notification_service.dispatch_notification(notification.id)
             raise
 
     def update_stock(
@@ -164,6 +201,7 @@ class ProductService:
         inbound_quantity = latest_snapshot.inbound_quantity if latest_snapshot else 0
         old_quantity = latest_snapshot.available_quantity if latest_snapshot else None
         timestamp = self._now()
+        notification_service = NotificationService(self.db_session)
 
         try:
             response_payload = self.amazon_service.update_listing_stock(
@@ -184,7 +222,25 @@ class ProductService:
             )
             self.db_session.add(snapshot)
             self.db_session.flush()
-            self._reconcile_alert(product=product, snapshot=snapshot)
+            notification_ids: list[UUID] = []
+            alert = self._reconcile_alert(product=product, snapshot=snapshot)
+            if alert is not None:
+                alert_notification = notification_service.queue_event_notification(
+                    event_type="inventory_alert",
+                    source="products_api",
+                    event_status=alert.severity,
+                    event_payload={
+                        "sku": product.sku,
+                        "asin": product.asin,
+                        "available_quantity": quantity,
+                        "threshold": product.low_stock_threshold,
+                        "message": alert.message,
+                    },
+                    notification_type="low_stock_threshold_reached",
+                    message_preview=alert.message,
+                    occurred_at=timestamp,
+                )
+                notification_ids.append(alert_notification.id)
             self.db_session.add(
                 StockChangeLog(
                     product_id=product.id,
@@ -196,7 +252,24 @@ class ProductService:
                     created_at=timestamp,
                 )
             )
+            stock_notification = notification_service.queue_event_notification(
+                event_type="stock_update",
+                source="products_api",
+                event_status=JobStatus.SUCCEEDED.value,
+                event_payload={
+                    "sku": product.sku,
+                    "asin": product.asin,
+                    "old_quantity": old_quantity,
+                    "new_quantity": quantity,
+                },
+                notification_type="stock_update_success",
+                message_preview=f"Stock update succeeded for {product.sku}: quantity {quantity}.",
+                occurred_at=timestamp,
+            )
+            notification_ids.append(stock_notification.id)
             self.db_session.commit()
+            for notification_id in notification_ids:
+                notification_service.dispatch_notification(notification_id)
             return ProductMutationResponse(
                 product_id=str(product.id),
                 status=JobStatus.SUCCEEDED.value,
@@ -215,7 +288,22 @@ class ProductService:
                     created_at=timestamp,
                 )
             )
+            notification = notification_service.queue_event_notification(
+                event_type="stock_update",
+                source="products_api",
+                event_status=JobStatus.FAILED.value,
+                event_payload={
+                    "sku": product.sku,
+                    "asin": product.asin,
+                    "attempted_quantity": quantity,
+                    "error": str(exc),
+                },
+                notification_type="stock_update_failure",
+                message_preview=f"Stock update failed for {product.sku}.",
+                occurred_at=timestamp,
+            )
             self.db_session.commit()
+            notification_service.dispatch_notification(notification.id)
             raise
 
     def _get_product(self, product_id: UUID) -> Product:
@@ -224,7 +312,12 @@ class ProductService:
             raise ValueError("Product not found.")
         return product
 
-    def _reconcile_alert(self, *, product: Product, snapshot: InventorySnapshot) -> None:
+    def _reconcile_alert(
+        self,
+        *,
+        product: Product,
+        snapshot: InventorySnapshot,
+    ) -> InventoryAlert | None:
         unresolved_alerts = self.db_session.execute(
             select(InventoryAlert)
             .where(
@@ -238,7 +331,7 @@ class ProductService:
             for alert in unresolved_alerts:
                 alert.is_resolved = True
                 alert.resolved_at = self._now()
-            return
+            return None
 
         for alert in unresolved_alerts:
             alert.is_resolved = True
@@ -254,16 +347,17 @@ class ProductService:
             if snapshot.alert_status == InventoryAlertStatus.OUT_OF_STOCK.value
             else f"{product.sku} is at or below the low-stock threshold."
         )
-        self.db_session.add(
-            InventoryAlert(
-                product_id=product.id,
-                snapshot_id=snapshot.id,
-                severity=severity,
-                message=message,
-                is_resolved=False,
-                created_at=self._now(),
-            )
+        alert = InventoryAlert(
+            product_id=product.id,
+            snapshot_id=snapshot.id,
+            severity=severity,
+            message=message,
+            is_resolved=False,
+            created_at=self._now(),
         )
+        self.db_session.add(alert)
+        self.db_session.flush()
+        return alert
 
     @staticmethod
     def _determine_alert_status(*, available_quantity: int, threshold: int) -> str:

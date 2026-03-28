@@ -13,6 +13,7 @@ from app.services.auth_service import AuthService
 from app.services.catalog_import_service import CatalogImportService
 from app.services.dashboard_service import DashboardService
 from app.services.inventory_service import InventoryService
+from app.services.notification_service import NotificationService
 from app.services.product_service import ProductService
 from app.services.user_service import UserService
 
@@ -45,6 +46,12 @@ def get_aplus_service(
     openai_service: OpenAiAplusService = Depends(get_openai_aplus_service),
 ) -> AplusService:
     return AplusService(db_session, amazon_service, openai_service)
+
+
+def get_notification_service(
+    db_session: Session = Depends(get_db_session),
+) -> NotificationService:
+    return NotificationService(db_session)
 
 
 def get_product_service(db_session: Session = Depends(get_db_session)) -> ProductService:

@@ -10,6 +10,7 @@ from app.core.database import SessionLocal
 from app.core.logging import configure_logging
 from app.services.amazon.service import AmazonSpApiService
 from app.services.catalog_import_service import CatalogImportService
+from app.services.notification_service import NotificationService
 
 configure_logging()
 
@@ -28,6 +29,12 @@ def heartbeat() -> None:
 def import_amazon_catalog(job_id: str) -> None:
     with SessionLocal() as session:
         CatalogImportService(session, AmazonSpApiService()).run_import_job(UUID(job_id))
+
+
+@dramatiq.actor(queue_name="notifications")
+def dispatch_slack_notification(notification_id: str) -> None:
+    with SessionLocal() as session:
+        NotificationService(session).deliver_slack_notification(UUID(notification_id))
 
 
 def main() -> None:
