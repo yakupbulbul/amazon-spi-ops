@@ -18,7 +18,13 @@ APLUS_SYSTEM_PROMPT = dedent(
 ).strip()
 
 
-def build_aplus_user_prompt(*, product_summary: str, brand_tone: str | None, positioning: str | None) -> str:
+def build_aplus_user_prompt(
+    *,
+    product_summary: str,
+    brand_tone: str | None,
+    positioning: str | None,
+    language: str,
+) -> str:
     tone_block = brand_tone or "Use a balanced, modern marketplace tone."
     positioning_block = positioning or "No extra positioning guidance was provided."
     return dedent(
@@ -34,6 +40,9 @@ def build_aplus_user_prompt(*, product_summary: str, brand_tone: str | None, pos
         Positioning guidance:
         {positioning_block}
 
+        Write the full draft in:
+        {language}
+
         Build:
         - one headline
         - one subheadline
@@ -48,5 +57,28 @@ def build_aplus_user_prompt(*, product_summary: str, brand_tone: str | None, pos
         - body
         - up to 4 bullets
         - image_brief
+        """
+    ).strip()
+
+
+def build_aplus_translation_prompt(
+    *,
+    source_language: str,
+    target_language: str,
+    draft_payload: str,
+) -> str:
+    return dedent(
+        f"""
+        Translate the following Amazon A+ draft content from {source_language} to {target_language}.
+
+        Rules:
+        - Preserve the exact JSON schema and field names.
+        - Do not translate enum values or schema keys.
+        - Do not change module_type values.
+        - Translate only shopper-facing text fields and list items.
+        - Keep the copy marketplace-safe and natural for the target locale.
+
+        JSON draft:
+        {draft_payload}
         """
     ).strip()

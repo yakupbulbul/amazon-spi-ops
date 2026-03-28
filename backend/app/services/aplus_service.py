@@ -13,6 +13,7 @@ from app.schemas.aplus import (
     AplusDraftPayload,
     AplusDraftResponse,
     AplusPublishResponse,
+    SupportedAplusLanguage,
 )
 from app.services.ai.openai_service import OpenAiAplusService
 from app.services.amazon.service import AmazonSpApiService
@@ -47,9 +48,13 @@ class AplusService:
         product_id: UUID,
         brand_tone: str | None,
         positioning: str | None,
+        source_language: SupportedAplusLanguage,
+        target_language: SupportedAplusLanguage | None,
+        auto_translate: bool,
         requested_by: User,
     ) -> AplusDraftResponse:
         product = self._get_product(product_id)
+        effective_target_language = target_language or source_language
         product_context = ProductService(self.db_session, self.amazon_service).list_products()
         product_summary = next(
             (item for item in product_context.items if item.id == str(product.id)),
@@ -68,13 +73,23 @@ class AplusService:
             },
             brand_tone=brand_tone,
             positioning=positioning,
+            source_language=source_language,
         )
+        if auto_translate:
+            draft_payload = self.openai_service.translate_aplus_draft(
+                draft_payload=draft_payload,
+                source_language=source_language,
+                target_language=effective_target_language,
+            )
 
         draft = AplusDraft(
             product_id=product.id,
             status=DraftStatus.DRAFT.value,
             brand_tone=brand_tone,
             positioning=positioning,
+            source_language=source_language,
+            target_language=effective_target_language,
+            auto_translate=auto_translate,
             draft_payload=draft_payload.model_dump(mode="json"),
             validated_payload=None,
             created_by_id=requested_by.id,
@@ -103,7 +118,11 @@ class AplusService:
             validated_payload = AplusDraftPayload.model_validate(
                 draft.validated_payload or draft.draft_payload
             )
-            prepared_payload = self._build_amazon_payload(product=product, draft_payload=validated_payload)
+            prepared_payload = self._build_amazon_payload(
+                product=product,
+                draft_payload=validated_payload,
+                target_language=draft.target_language,
+            )
 
             publish_job = AplusPublishJob(
                 draft_id=draft.id,
@@ -178,8 +197,10 @@ class AplusService:
         *,
         product: Product,
         draft_payload: AplusDraftPayload,
+        target_language: str,
     ) -> dict[str, object]:
         locale = self._marketplace_locale(product.marketplace_id)
+        draft_locale = target_language or locale
         content_modules = []
         for module in draft_payload.modules:
             content_modules.append(
@@ -195,7 +216,7 @@ class AplusService:
         amazon_content = {
             "contentDocument": {
                 "name": f"{product.title} A+ draft",
-                "locale": locale,
+                "locale": draft_locale,
                 "contentSubType": "EMC",
                 "headline": draft_payload.headline,
                 "subheadline": draft_payload.subheadline,
@@ -254,6 +275,9 @@ class AplusService:
             status=draft.status,
             brand_tone=draft.brand_tone,
             positioning=draft.positioning,
+            source_language=draft.source_language,
+            target_language=draft.target_language,
+            auto_translate=draft.auto_translate,
             draft_payload=AplusDraftPayload.model_validate(draft.draft_payload),
             validated_payload=(
                 AplusDraftPayload.model_validate(draft.validated_payload)

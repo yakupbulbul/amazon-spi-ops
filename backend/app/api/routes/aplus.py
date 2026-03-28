@@ -38,10 +38,16 @@ def generate_aplus_draft(
             product_id=UUID(payload.product_id),
             brand_tone=payload.brand_tone,
             positioning=payload.positioning,
+            source_language=payload.source_language,
+            target_language=payload.target_language,
+            auto_translate=payload.auto_translate,
             requested_by=current_user,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        detail = str(exc)
+        if detail == "Product not found.":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail) from exc
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
