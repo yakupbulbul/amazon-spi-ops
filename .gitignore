@@ -17,6 +17,6 @@ backend/.venv/
 backend/.pytest_cache/
 backend/.mypy_cache/
 backend/.ruff_cache/
+backend/*.egg-info/
 postgres-data/
 redis-data/
-
