@@ -7,7 +7,11 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.core.migrations import run_migrations
-from app.services.bootstrap_service import bootstrap_admin_user, bootstrap_sample_catalog
+from app.services.bootstrap_service import (
+    align_sample_catalog_marketplace,
+    bootstrap_admin_user,
+    bootstrap_sample_catalog,
+)
 
 configure_logging()
 
@@ -17,6 +21,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     run_migrations()
     bootstrap_admin_user()
     bootstrap_sample_catalog()
+    align_sample_catalog_marketplace()
     yield
 
 app = FastAPI(

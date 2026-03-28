@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, aliased
@@ -98,11 +99,22 @@ class InventoryService:
                 synced_at=self._now(),
             )
 
+        target_marketplace = self.amazon_service.settings.marketplace_id or products[0].marketplace_id
         response = self.amazon_service.get_inventory_summaries(
-            marketplace_id=products[0].marketplace_id,
-            seller_skus=[product.sku for product in products],
+            marketplace_id=target_marketplace,
         )
         response_summaries = self._normalize_response_summaries(response)
+        self._upsert_products_from_response(
+            response_summaries=response_summaries,
+            marketplace_id=target_marketplace,
+        )
+
+        products = self.db_session.execute(
+            select(Product)
+            .where(Product.marketplace_id == target_marketplace)
+            .order_by(Product.title.asc())
+        ).scalars().all()
+        preserve_missing_snapshot = bool(response.get("mock"))
 
         synced_count = 0
         for product in products:
@@ -115,13 +127,19 @@ class InventoryService:
             ).scalar_one_or_none()
 
             available_quantity = (
-                summary["available_quantity"] if summary else latest_snapshot.available_quantity if latest_snapshot else 0
+                summary["available_quantity"]
+                if summary
+                else latest_snapshot.available_quantity if preserve_missing_snapshot and latest_snapshot else 0
             )
             reserved_quantity = (
-                summary["reserved_quantity"] if summary else latest_snapshot.reserved_quantity if latest_snapshot else 0
+                summary["reserved_quantity"]
+                if summary
+                else latest_snapshot.reserved_quantity if preserve_missing_snapshot and latest_snapshot else 0
             )
             inbound_quantity = (
-                summary["inbound_quantity"] if summary else latest_snapshot.inbound_quantity if latest_snapshot else 0
+                summary["inbound_quantity"]
+                if summary
+                else latest_snapshot.inbound_quantity if preserve_missing_snapshot and latest_snapshot else 0
             )
 
             snapshot = InventorySnapshot(
@@ -148,10 +166,10 @@ class InventoryService:
             synced_at=self._now(),
         )
 
-    def _normalize_response_summaries(self, response: dict[str, object]) -> dict[str, dict[str, int]]:
+    def _normalize_response_summaries(self, response: dict[str, object]) -> dict[str, dict[str, object]]:
         summaries = response.get("summaries")
         if isinstance(summaries, list):
-            normalized: dict[str, dict[str, int]] = {}
+            normalized: dict[str, dict[str, object]] = {}
             for item in summaries:
                 if not isinstance(item, dict):
                     continue
@@ -162,6 +180,8 @@ class InventoryService:
                     "available_quantity": int(item.get("available_quantity", 0)),
                     "reserved_quantity": int(item.get("reserved_quantity", 0)),
                     "inbound_quantity": int(item.get("inbound_quantity", 0)),
+                    "asin": item.get("asin"),
+                    "product_name": item.get("product_name"),
                 }
             return normalized
 
@@ -176,12 +196,54 @@ class InventoryService:
             sku = item.get("sellerSku")
             if not isinstance(sku, str):
                 continue
+            total_reserved_quantity = item.get("totalReservedQuantity", item.get("reservedQuantity", 0))
+            available_quantity = item.get("fulfillableQuantity", item.get("totalQuantity", 0))
             normalized[sku] = {
-                "available_quantity": int(item.get("totalQuantity", 0)),
-                "reserved_quantity": int(item.get("reservedQuantity", 0)),
+                "available_quantity": int(available_quantity or 0),
+                "reserved_quantity": int(total_reserved_quantity or 0),
                 "inbound_quantity": int(item.get("inboundWorkingQuantity", 0)),
+                "asin": item.get("asin"),
+                "product_name": item.get("productName"),
             }
         return normalized
+
+    def _upsert_products_from_response(
+        self,
+        *,
+        response_summaries: dict[str, dict[str, object]],
+        marketplace_id: str,
+    ) -> None:
+        if not response_summaries:
+            return
+
+        existing_products = self.db_session.execute(select(Product)).scalars().all()
+        products_by_sku = {product.sku: product for product in existing_products}
+
+        for sku, summary in response_summaries.items():
+            if sku in products_by_sku:
+                product = products_by_sku[sku]
+                if product.marketplace_id != marketplace_id:
+                    product.marketplace_id = marketplace_id
+                continue
+
+            asin = summary.get("asin")
+            if not isinstance(asin, str) or not asin:
+                continue
+
+            product_name = summary.get("product_name")
+            title = product_name if isinstance(product_name, str) and product_name else sku
+            self.db_session.add(
+                Product(
+                    sku=sku,
+                    asin=asin,
+                    title=title,
+                    marketplace_id=marketplace_id,
+                    price_amount=Decimal("0.00"),
+                    price_currency=None,
+                    low_stock_threshold=10,
+                    is_active=True,
+                )
+            )
 
     def _reconcile_alert(self, *, product: Product, snapshot: InventorySnapshot) -> None:
         unresolved_alerts = self.db_session.execute(
