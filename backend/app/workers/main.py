@@ -8,8 +8,11 @@ from dramatiq.brokers.redis import RedisBroker
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.logging import configure_logging
+from app.services.ai.image_provider import OpenAiImageProvider
+from app.services.aplus_image_service import AplusImageService
 from app.services.amazon.service import AmazonSpApiService
 from app.services.catalog_import_service import CatalogImportService
+from app.services.media_storage import MediaStorageService
 from app.services.notification_service import NotificationService
 
 configure_logging()
@@ -35,6 +38,20 @@ def import_amazon_catalog(job_id: str) -> None:
 def dispatch_slack_notification(notification_id: str) -> None:
     with SessionLocal() as session:
         NotificationService(session).deliver_slack_notification(UUID(notification_id))
+
+
+@dramatiq.actor(queue_name="aplus-images")
+def generate_aplus_module_image(draft_id: str, module_index: int, requested_by_id: str | None = None) -> None:
+    with SessionLocal() as session:
+        AplusImageService(
+            session,
+            OpenAiImageProvider(),
+            MediaStorageService(),
+        ).process_generation(
+            draft_id=UUID(draft_id),
+            module_index=module_index,
+            requested_by_id=UUID(requested_by_id) if requested_by_id else None,
+        )
 
 
 def main() -> None:

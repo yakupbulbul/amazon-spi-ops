@@ -24,6 +24,7 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import {
   generateAplusDraft,
+  generateAplusModuleImage,
   getAplusAssets,
   getAplusDrafts,
   getProducts,
@@ -162,6 +163,10 @@ export function AplusStudioPage() {
     editorDraft !== null &&
     JSON.stringify(editorDraft) !== JSON.stringify(selectedDraftPayload);
   const publishReady = selectedDraft?.readiness_report.is_publish_ready ?? false;
+  const hasPendingImageGeneration =
+    selectedDraft?.draft_payload.modules.some(
+      (module) => module.image_status === "queued" || module.image_status === "generating",
+    ) ?? false;
 
   const loadStudioData = useEffectEvent(async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
     if (!token) {
@@ -262,6 +267,34 @@ export function AplusStudioPage() {
       cancelled = true;
     };
   }, [selectedProductId, token]);
+
+  useEffect(() => {
+    if (!token || !selectedDraftId || !hasPendingImageGeneration) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void getAplusDrafts(token)
+        .then((response) => {
+          const nextDraft = response.items.find((item) => item.id === selectedDraftId);
+          if (!nextDraft) {
+            return;
+          }
+
+          upsertDraft(nextDraft);
+          if (!hasUnsavedChanges) {
+            selectDraft(nextDraft);
+          }
+        })
+        .catch(() => {
+          // Keep polling passive. Existing error banners already cover explicit user actions.
+        });
+    }, 3000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hasPendingImageGeneration, hasUnsavedChanges, selectedDraftId, token]);
 
   function upsertDraft(nextDraft: AplusDraftResponse) {
     setDrafts((currentDrafts) => [
@@ -520,6 +553,39 @@ export function AplusStudioPage() {
       image_status: "idle",
       image_error_message: null,
     });
+  }
+
+  async function handleGenerateModuleImage(index: number) {
+    if (!token || !selectedDraftId || !editorDraft) {
+      setError("Generate a draft before creating AI images.");
+      return;
+    }
+
+    if (hasUnsavedChanges) {
+      setError("Validate or save the current draft before running background image generation.");
+      return;
+    }
+
+    const module = editorDraft.modules[index];
+    try {
+      const draft = await generateAplusModuleImage(token, {
+        draft_id: selectedDraftId,
+        module_index: index,
+        image_prompt: module.image_prompt,
+        overlay_text: module.overlay_text,
+        reference_asset_ids: module.reference_asset_ids,
+      });
+      upsertDraft(draft);
+      selectDraft(draft);
+      setStatusMessage(`Image generation queued for module ${index + 1}.`);
+      setError(null);
+    } catch (generationError) {
+      setError(
+        generationError instanceof Error
+          ? generationError.message
+          : "Unable to queue module image generation.",
+      );
+    }
   }
 
   function addModule() {
@@ -1099,6 +1165,8 @@ export function AplusStudioPage() {
                         onUploadImage={(file) => void handleModuleImageUpload(index, file)}
                         onSelectAsset={(asset) => attachExistingAsset(index, asset)}
                         onClearImage={() => clearModuleImage(index)}
+                        canGenerateImage={Boolean(selectedDraftId) && !hasUnsavedChanges}
+                        onGenerateImage={() => void handleGenerateModuleImage(index)}
                       />
                     ))}
                   </div>

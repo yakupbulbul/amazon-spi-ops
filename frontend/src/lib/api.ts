@@ -455,6 +455,26 @@ export async function generateAplusDraft(
   });
 }
 
+export async function generateAplusModuleImage(
+  token: string,
+  payload: {
+    draft_id: string;
+    module_index: number;
+    image_prompt?: string | null;
+    overlay_text?: string | null;
+    reference_asset_ids: string[];
+  },
+): Promise<AplusDraftResponse> {
+  return apiRequest<AplusDraftResponse>("/aplus/images/generate", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function validateAplusDraft(
   token: string,
   payload: { draft_id: string; draft_payload: AplusDraftPayload },

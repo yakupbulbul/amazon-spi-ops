@@ -19,6 +19,8 @@ type AplusModuleImageSectionProps = {
   onUpload: (file: File) => void;
   onSelectAsset: (asset: AplusAsset) => void;
   onClearImage: () => void;
+  canGenerate: boolean;
+  onGenerate: () => void;
 };
 
 const imageModes: Array<{
@@ -63,6 +65,8 @@ export function AplusModuleImageSection({
   onUpload,
   onSelectAsset,
   onClearImage,
+  canGenerate,
+  onGenerate,
 }: AplusModuleImageSectionProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeImageUrl = getActiveImageUrl(module, assets);
@@ -241,6 +245,29 @@ export function AplusModuleImageSection({
                 />
               </label>
 
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onGenerate}
+                  disabled={!canGenerate || module.image_status === "queued" || module.image_status === "generating"}
+                  className="inline-flex items-center gap-2 rounded-full bg-amber-300 px-3 py-2 text-xs font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {module.image_status === "queued" || module.image_status === "generating" ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  {module.image_status === "queued" || module.image_status === "generating"
+                    ? "Generating image..."
+                    : "Generate with OpenAI"}
+                </button>
+                {!canGenerate ? (
+                  <span className="text-xs text-slate-500">
+                    Save or validate the draft before running background image generation.
+                  </span>
+                ) : null}
+              </div>
+
               <div className="space-y-2">
                 <p className="text-sm text-slate-300">Reference assets</p>
                 <p className="text-xs leading-5 text-slate-500">
@@ -303,6 +330,12 @@ export function AplusModuleImageSection({
           {uploadError || module.image_error_message ? (
             <div className="rounded-[1rem] border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
               {uploadError ?? module.image_error_message}
+            </div>
+          ) : null}
+
+          {module.image_status !== "idle" ? (
+            <div className="rounded-[1rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-xs uppercase tracking-[0.18em] text-slate-400">
+              Image status: {module.image_status.replace("_", " ")}
             </div>
           ) : null}
         </div>

@@ -26,6 +26,8 @@ type AplusModuleEditorCardProps = {
   onUploadImage: (file: File) => void;
   onSelectAsset: (asset: AplusAsset) => void;
   onClearImage: () => void;
+  canGenerateImage: boolean;
+  onGenerateImage: () => void;
 };
 
 export function AplusModuleEditorCard({
@@ -44,6 +46,8 @@ export function AplusModuleEditorCard({
   onUploadImage,
   onSelectAsset,
   onClearImage,
+  canGenerateImage,
+  onGenerateImage,
 }: AplusModuleEditorCardProps) {
   const comparisonRows = module.bullets.map(parseComparisonRow);
 
@@ -172,6 +176,8 @@ export function AplusModuleEditorCard({
             onUpload={onUploadImage}
             onSelectAsset={onSelectAsset}
             onClearImage={onClearImage}
+            canGenerate={canGenerateImage}
+            onGenerate={onGenerateImage}
           />
 
           <div className="grid gap-4 xl:grid-cols-2">

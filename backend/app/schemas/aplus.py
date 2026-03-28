@@ -75,6 +75,14 @@ class AplusValidateRequest(BaseModel):
     draft_payload: AplusDraftPayload
 
 
+class AplusGenerateImageRequest(BaseModel):
+    draft_id: str
+    module_index: int = Field(ge=0, le=4)
+    image_prompt: str | None = Field(default=None, max_length=600)
+    overlay_text: str | None = Field(default=None, max_length=160)
+    reference_asset_ids: list[str] = Field(default_factory=list, max_length=8)
+
+
 class AplusPublishRequest(BaseModel):
     draft_id: str
 
