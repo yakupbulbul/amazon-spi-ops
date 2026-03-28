@@ -52,7 +52,7 @@ export type DashboardSummaryResponse = {
   slack_delivery: SlackDeliveryItem[];
 };
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function apiRequest<T>(
   path: string,
