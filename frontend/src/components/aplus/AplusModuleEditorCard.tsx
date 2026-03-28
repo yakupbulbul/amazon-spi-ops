@@ -7,7 +7,8 @@ import {
   Trash2,
 } from "lucide-react";
 
-import type { AplusModulePayload } from "../../lib/api";
+import type { AplusAsset, AplusModulePayload } from "../../lib/api";
+import { AplusModuleImageSection } from "./AplusModuleImageSection";
 
 type AplusModuleEditorCardProps = {
   index: number;
@@ -18,6 +19,13 @@ type AplusModuleEditorCardProps = {
   onRemove: () => void;
   onUpdate: (patch: Partial<AplusModulePayload>) => void;
   moduleLabels: Record<AplusModulePayload["module_type"], string>;
+  assets: AplusAsset[];
+  isLoadingAssets: boolean;
+  isUploadingImage: boolean;
+  imageUploadError: string | null;
+  onUploadImage: (file: File) => void;
+  onSelectAsset: (asset: AplusAsset) => void;
+  onClearImage: () => void;
 };
 
 export function AplusModuleEditorCard({
@@ -29,6 +37,13 @@ export function AplusModuleEditorCard({
   onRemove,
   onUpdate,
   moduleLabels,
+  assets,
+  isLoadingAssets,
+  isUploadingImage,
+  imageUploadError,
+  onUploadImage,
+  onSelectAsset,
+  onClearImage,
 }: AplusModuleEditorCardProps) {
   const comparisonRows = module.bullets.map(parseComparisonRow);
 
@@ -146,6 +161,18 @@ export function AplusModuleEditorCard({
               className="w-full rounded-[1.1rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-white outline-none"
             />
           </label>
+
+          <AplusModuleImageSection
+            module={module}
+            assets={assets}
+            isLoadingAssets={isLoadingAssets}
+            isUploading={isUploadingImage}
+            uploadError={imageUploadError}
+            onUpdate={onUpdate}
+            onUpload={onUploadImage}
+            onSelectAsset={onSelectAsset}
+            onClearImage={onClearImage}
+          />
 
           <div className="grid gap-4 xl:grid-cols-2">
             {module.module_type === "comparison" ? (

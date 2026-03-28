@@ -148,6 +148,15 @@ export type AplusModulePayload = {
   body: string;
   bullets: string[];
   image_brief: string;
+  image_mode: "generated" | "uploaded" | "existing_asset" | "none";
+  image_prompt: string | null;
+  generated_image_url: string | null;
+  uploaded_image_url: string | null;
+  selected_asset_id: string | null;
+  reference_asset_ids: string[];
+  overlay_text: string | null;
+  image_status: "idle" | "queued" | "generating" | "completed" | "failed";
+  image_error_message: string | null;
 };
 
 export type AplusDraftPayload = {
@@ -174,6 +183,22 @@ export type AplusReadinessReport = {
   blocking_errors: AplusReadinessIssue[];
   warnings: AplusReadinessIssue[];
   missing_sections: string[];
+};
+
+export type AplusAsset = {
+  id: string;
+  product_id: string | null;
+  asset_scope: "product" | "brand" | "logo" | "generated";
+  label: string | null;
+  file_name: string;
+  mime_type: string;
+  file_size_bytes: number;
+  public_url: string;
+  created_at: string;
+};
+
+export type AplusAssetListResponse = {
+  items: AplusAsset[];
 };
 
 export type AplusDraftResponse = {
@@ -361,6 +386,51 @@ export async function getAplusDrafts(token: string): Promise<AplusDraftListRespo
     headers: {
       Authorization: `Bearer ${token}`,
     },
+  });
+}
+
+export async function getAplusAssets(
+  token: string,
+  productId?: string,
+): Promise<AplusAssetListResponse> {
+  const searchParams = new URLSearchParams();
+  if (productId) {
+    searchParams.set("product_id", productId);
+  }
+
+  const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : "";
+  return apiRequest<AplusAssetListResponse>(`/aplus/assets${suffix}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function uploadAplusAsset(
+  token: string,
+  payload: {
+    file: File;
+    asset_scope: "product" | "brand" | "logo" | "generated";
+    product_id?: string;
+    label?: string;
+  },
+): Promise<AplusAsset> {
+  const formData = new FormData();
+  formData.set("file", payload.file);
+  formData.set("asset_scope", payload.asset_scope);
+  if (payload.product_id) {
+    formData.set("product_id", payload.product_id);
+  }
+  if (payload.label) {
+    formData.set("label", payload.label);
+  }
+
+  return apiRequest<AplusAsset>("/aplus/assets/upload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
   });
 }
 

@@ -24,9 +24,12 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import {
   generateAplusDraft,
+  getAplusAssets,
   getAplusDrafts,
   getProducts,
   publishAplusDraft,
+  uploadAplusAsset,
+  type AplusAsset,
   type AplusDraftPayload,
   type AplusDraftResponse,
   type AplusLanguage,
@@ -79,6 +82,15 @@ function buildEmptyDraft(product?: ProductListItem | null): AplusDraftPayload {
         "Prioritize shopper clarity over hype",
       ],
       image_brief: "Describe the supporting image direction for the creative team.",
+      image_mode: "none",
+      image_prompt: null,
+      generated_image_url: null,
+      uploaded_image_url: null,
+      selected_asset_id: null,
+      reference_asset_ids: [],
+      overlay_text: null,
+      image_status: "idle",
+      image_error_message: null,
     })),
     compliance_notes: [
       "Verify every claim against approved listing attributes before publishing.",
@@ -118,6 +130,7 @@ export function AplusStudioPage() {
   const [targetLanguage, setTargetLanguage] = useState<AplusLanguage>("de-DE");
   const [autoTranslate, setAutoTranslate] = useState(false);
   const [editorDraft, setEditorDraft] = useState<AplusDraftPayload | null>(null);
+  const [assets, setAssets] = useState<AplusAsset[]>([]);
   const [publishResult, setPublishResult] = useState<AplusPublishResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -126,6 +139,11 @@ export function AplusStudioPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [expandedModules, setExpandedModules] = useState<number[]>([0]);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(false);
+  const [assetLibraryError, setAssetLibraryError] = useState<string | null>(null);
+  const [imageUploadState, setImageUploadState] = useState<
+    Record<number, { pending: boolean; error: string | null }>
+  >({});
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -210,6 +228,40 @@ export function AplusStudioPage() {
     const activeProduct = products.find((product) => product.id === selectedProductId) ?? null;
     setEditorDraft(buildEmptyDraft(activeProduct));
   }, [products, selectedDraftId, selectedProductId]);
+
+  useEffect(() => {
+    if (!token || !selectedProductId) {
+      setAssets([]);
+      setAssetLibraryError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingAssets(true);
+    void getAplusAssets(token, selectedProductId)
+      .then((response) => {
+        if (!cancelled) {
+          setAssets(response.items);
+          setAssetLibraryError(null);
+        }
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setAssetLibraryError(
+            loadError instanceof Error ? loadError.message : "Unable to load reusable assets.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingAssets(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProductId, token]);
 
   function upsertDraft(nextDraft: AplusDraftResponse) {
     setDrafts((currentDrafts) => [
@@ -389,6 +441,87 @@ export function AplusStudioPage() {
     });
   }
 
+  async function handleModuleImageUpload(index: number, file: File) {
+    if (!token || !selectedProductId || !editorDraft) {
+      setError("Select a product before uploading module images.");
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setImageUploadState((current) => ({
+        ...current,
+        [index]: { pending: false, error: "Only JPG, PNG, and WEBP files are supported." },
+      }));
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setImageUploadState((current) => ({
+        ...current,
+        [index]: { pending: false, error: "Images must be 8 MB or smaller." },
+      }));
+      return;
+    }
+
+    setImageUploadState((current) => ({
+      ...current,
+      [index]: { pending: true, error: null },
+    }));
+
+    try {
+      const asset = await uploadAplusAsset(token, {
+        file,
+        asset_scope: selectedProduct?.brand ? "product" : "brand",
+        product_id: selectedProductId,
+        label: `${selectedProduct?.sku ?? "Asset"} · ${editorDraft.modules[index]?.headline ?? "Module image"}`,
+      });
+
+      setAssets((currentAssets) => [asset, ...currentAssets.filter((item) => item.id !== asset.id)]);
+      updateModule(index, {
+        image_mode: "uploaded",
+        uploaded_image_url: asset.public_url,
+        selected_asset_id: asset.id,
+        generated_image_url: null,
+        image_status: "completed",
+        image_error_message: null,
+      });
+      setImageUploadState((current) => ({
+        ...current,
+        [index]: { pending: false, error: null },
+      }));
+    } catch (uploadError) {
+      setImageUploadState((current) => ({
+        ...current,
+        [index]: {
+          pending: false,
+          error: uploadError instanceof Error ? uploadError.message : "Unable to upload image.",
+        },
+      }));
+    }
+  }
+
+  function attachExistingAsset(index: number, asset: AplusAsset) {
+    updateModule(index, {
+      image_mode: "existing_asset",
+      selected_asset_id: asset.id,
+      uploaded_image_url: null,
+      generated_image_url: null,
+      image_status: "completed",
+      image_error_message: null,
+    });
+  }
+
+  function clearModuleImage(index: number) {
+    updateModule(index, {
+      image_mode: "none",
+      uploaded_image_url: null,
+      generated_image_url: null,
+      selected_asset_id: null,
+      image_status: "idle",
+      image_error_message: null,
+    });
+  }
+
   function addModule() {
     const nextModuleIndex = editorDraft?.modules.length ?? 0;
     setEditorDraft((currentDraft) => {
@@ -406,6 +539,15 @@ export function AplusStudioPage() {
             body: "Add factual supporting copy for this additional content block.",
             bullets: ["State the core supporting point", "Keep the language marketplace safe"],
             image_brief: "Describe the image angle for this module.",
+            image_mode: "none",
+            image_prompt: null,
+            generated_image_url: null,
+            uploaded_image_url: null,
+            selected_asset_id: null,
+            reference_asset_ids: [],
+            overlay_text: null,
+            image_status: "idle",
+            image_error_message: null,
           },
         ],
       };
@@ -950,6 +1092,13 @@ export function AplusStudioPage() {
                         onRemove={() => removeModule(index)}
                         onUpdate={(patch) => updateModule(index, patch)}
                         moduleLabels={moduleLabels}
+                        assets={assets}
+                        isLoadingAssets={isLoadingAssets}
+                        isUploadingImage={imageUploadState[index]?.pending ?? false}
+                        imageUploadError={imageUploadState[index]?.error ?? assetLibraryError}
+                        onUploadImage={(file) => void handleModuleImageUpload(index, file)}
+                        onSelectAsset={(asset) => attachExistingAsset(index, asset)}
+                        onClearImage={() => clearModuleImage(index)}
                       />
                     ))}
                   </div>
