@@ -16,6 +16,7 @@ from app.schemas.aplus import (
     SupportedAplusLanguage,
 )
 from app.services.ai.openai_service import OpenAiAplusService
+from app.services.aplus_optimization import build_aplus_optimization_report
 from app.services.aplus_readiness import build_aplus_readiness_report
 from app.services.amazon.service import AmazonSpApiService
 from app.services.notification_service import NotificationService
@@ -313,6 +314,9 @@ class AplusService:
             readiness_report=build_aplus_readiness_report(
                 draft_payload=active_payload,
                 checked_payload=checked_payload,
+            ),
+            optimization_report=build_aplus_optimization_report(
+                draft_payload=active_payload,
             ),
             created_at=draft.created_at,
             updated_at=draft.updated_at,

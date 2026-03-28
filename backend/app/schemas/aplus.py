@@ -54,6 +54,32 @@ class AplusReadinessReport(BaseModel):
     missing_sections: list[str]
 
 
+class AplusOptimizationSuggestion(BaseModel):
+    severity: Literal["critical", "warning"]
+    section: str
+    title: str
+    message: str
+
+
+class AplusOptimizationSectionInsight(BaseModel):
+    section: str
+    severity: Literal["critical", "warning"]
+    summary: str
+
+
+class AplusOptimizationReport(BaseModel):
+    overall_score: int = Field(ge=0, le=100)
+    structure_score: int = Field(ge=0, le=100)
+    clarity_score: int = Field(ge=0, le=100)
+    differentiation_score: int = Field(ge=0, le=100)
+    completeness_score: int = Field(ge=0, le=100)
+    image_quality_score: int | None = Field(default=None, ge=0, le=100)
+    missing_sections: list[str]
+    critical_issues: list[AplusOptimizationSuggestion]
+    warnings: list[AplusOptimizationSuggestion]
+    section_insights: list[AplusOptimizationSectionInsight]
+
+
 class AplusGenerateRequest(BaseModel):
     product_id: str
     brand_tone: str | None = Field(default=None, max_length=255)
@@ -119,6 +145,7 @@ class AplusDraftResponse(BaseModel):
     draft_payload: AplusDraftPayload
     validated_payload: AplusDraftPayload | None
     readiness_report: AplusReadinessReport
+    optimization_report: AplusOptimizationReport
     created_at: datetime
     updated_at: datetime
 
