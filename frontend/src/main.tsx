@@ -5,6 +5,7 @@ import { createBrowserRouter, Outlet, RouterProvider } from "react-router-dom";
 import { App } from "./App";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
+import { AplusStudioPage } from "./pages/AplusStudioPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -31,17 +32,7 @@ const router = createBrowserRouter([
               },
               {
                 path: "aplus",
-                element: (
-                  <SectionPage
-                    eyebrow="Creative workflow"
-                    title="A+ Content Studio"
-                    description="This route is reserved for structured AI draft generation, editable previews, and Amazon-compatible payload mapping."
-                    bullets={[
-                      "Ready for prompt inputs such as brand tone and positioning.",
-                      "Ready for structured JSON validation and draft preview panels.",
-                    ]}
-                  />
-                ),
+                element: <AplusStudioPage />,
               },
               {
                 path: "inventory",
