@@ -185,6 +185,32 @@ export type AplusReadinessReport = {
   missing_sections: string[];
 };
 
+export type AplusOptimizationSuggestion = {
+  severity: "critical" | "warning";
+  section: string;
+  title: string;
+  message: string;
+};
+
+export type AplusOptimizationSectionInsight = {
+  section: string;
+  severity: "critical" | "warning";
+  summary: string;
+};
+
+export type AplusOptimizationReport = {
+  overall_score: number;
+  structure_score: number;
+  clarity_score: number;
+  differentiation_score: number;
+  completeness_score: number;
+  image_quality_score: number | null;
+  missing_sections: string[];
+  critical_issues: AplusOptimizationSuggestion[];
+  warnings: AplusOptimizationSuggestion[];
+  section_insights: AplusOptimizationSectionInsight[];
+};
+
 export type AplusAsset = {
   id: string;
   product_id: string | null;
@@ -217,6 +243,7 @@ export type AplusDraftResponse = {
   draft_payload: AplusDraftPayload;
   validated_payload: AplusDraftPayload | null;
   readiness_report: AplusReadinessReport;
+  optimization_report: AplusOptimizationReport;
   created_at: string;
   updated_at: string;
 };
