@@ -9,7 +9,8 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md alembic.ini ./
+COPY alembic ./alembic
 COPY app ./app
 
 RUN pip install --upgrade pip \
@@ -18,4 +19,3 @@ RUN pip install --upgrade pip \
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
