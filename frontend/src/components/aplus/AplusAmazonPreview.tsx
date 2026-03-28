@@ -2,17 +2,25 @@ import {
   Check,
   Columns3,
   ImageIcon,
+  ImageOff,
   MessageSquareQuote,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
 
-import type { AplusDraftPayload, AplusLanguage, AplusModulePayload } from "../../lib/api";
+import type {
+  AplusAsset,
+  AplusDraftPayload,
+  AplusLanguage,
+  AplusModulePayload,
+} from "../../lib/api";
 import { formatLanguageLabel } from "./languages";
+import { resolveModulePreviewImageUrl } from "./previewImage";
 
 type AplusAmazonPreviewProps = {
   draft: AplusDraftPayload;
   language: AplusLanguage;
+  assets?: AplusAsset[];
 };
 
 const twoLineClampStyle = {
@@ -22,7 +30,9 @@ const twoLineClampStyle = {
   overflow: "hidden",
 };
 
-export function AplusAmazonPreview({ draft, language }: AplusAmazonPreviewProps) {
+export function AplusAmazonPreview({ draft, language, assets = [] }: AplusAmazonPreviewProps) {
+  const heroImageUrl = resolveModulePreviewImageUrl(draft.modules[0], assets);
+
   return (
     <div className="rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.12),_transparent_32%),linear-gradient(180deg,rgba(15,23,42,0.9),rgba(2,6,23,0.95))] p-3 sm:p-4">
       <div className="mx-auto flex h-[640px] min-h-[560px] max-h-[72vh] w-full items-center justify-center">
@@ -74,14 +84,17 @@ export function AplusAmazonPreview({ draft, language }: AplusAmazonPreviewProps)
                           Creative direction
                         </p>
                       </div>
-                      <div className="mt-3 rounded-[0.95rem] bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.22),_transparent_42%),linear-gradient(135deg,#e2e8f0,#f8fafc)] p-3">
-                        <p className="text-[13px] leading-5 text-slate-700">
-                          {draft.modules[0]?.image_brief ?? "Add an image brief to preview the hero visual."}
-                        </p>
-                      </div>
+                      <PreviewImageCard
+                        imageUrl={heroImageUrl}
+                        imageBrief={
+                          draft.modules[0]?.image_brief ?? "Add an image brief to preview the hero visual."
+                        }
+                      />
                       <div className="mt-3 inline-flex max-w-full rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white">
                         <span className="truncate">
-                          {extractOverlayText(draft.modules[0]?.image_brief) ?? "Overlay text preview"}
+                          {draft.modules[0]?.overlay_text ??
+                            extractOverlayText(draft.modules[0]?.image_brief) ??
+                            "Overlay text preview"}
                         </span>
                       </div>
                     </div>
@@ -104,7 +117,11 @@ export function AplusAmazonPreview({ draft, language }: AplusAmazonPreviewProps)
 
                 <section className="space-y-3">
                   {draft.modules.map((module, index) => (
-                    <ModulePreviewCard key={`${module.module_type}-${index}`} module={module} />
+                    <ModulePreviewCard
+                      key={`${module.module_type}-${index}`}
+                      module={module}
+                      assets={assets}
+                    />
                   ))}
                 </section>
 
@@ -135,7 +152,15 @@ export function AplusAmazonPreview({ draft, language }: AplusAmazonPreviewProps)
   );
 }
 
-function ModulePreviewCard({ module }: { module: AplusModulePayload }) {
+function ModulePreviewCard({
+  module,
+  assets,
+}: {
+  module: AplusModulePayload;
+  assets: AplusAsset[];
+}) {
+  const imageUrl = resolveModulePreviewImageUrl(module, assets);
+
   if (module.module_type === "comparison") {
     const rows = module.bullets.map(parseComparisonRow);
 
@@ -147,6 +172,7 @@ function ModulePreviewCard({ module }: { module: AplusModulePayload }) {
         </div>
         <h5 className="mt-2 text-lg font-semibold leading-snug text-slate-950">{module.headline}</h5>
         <p className="mt-2 text-[13px] leading-5 text-slate-600">{module.body}</p>
+        <PreviewImageCard imageUrl={imageUrl} imageBrief={module.image_brief} />
         <div className="mt-3 overflow-hidden rounded-[0.9rem] border border-slate-200">
           <div className="grid grid-cols-[1fr_0.95fr_0.95fr] bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             <div className="px-2.5 py-2">Criteria</div>
@@ -186,12 +212,10 @@ function ModulePreviewCard({ module }: { module: AplusModulePayload }) {
               {module.module_type === "faq" ? "Trust section" : `${module.module_type} module`}
             </p>
           </div>
-          <div className="mt-3 rounded-[0.9rem] bg-white/90 px-3 py-2.5 text-[12px] leading-5 text-slate-700 shadow-sm">
-            {module.image_brief}
-          </div>
+          <PreviewImageCard imageUrl={imageUrl} imageBrief={module.image_brief} />
           <div className="mt-3 inline-flex max-w-full rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white">
             <span className="truncate">
-              {extractOverlayText(module.image_brief) ?? "Overlay text preview"}
+              {module.overlay_text ?? extractOverlayText(module.image_brief) ?? "Overlay text preview"}
             </span>
           </div>
         </div>
@@ -214,6 +238,31 @@ function ModulePreviewCard({ module }: { module: AplusModulePayload }) {
         </div>
       </div>
     </article>
+  );
+}
+
+function PreviewImageCard({
+  imageUrl,
+  imageBrief,
+}: {
+  imageUrl: string | null;
+  imageBrief: string;
+}) {
+  if (imageUrl) {
+    return (
+      <div className="mt-3 overflow-hidden rounded-[0.95rem] border border-slate-200 bg-white">
+        <img src={imageUrl} alt={imageBrief} className="aspect-[4/3] h-full w-full object-cover" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-[0.95rem] bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.22),_transparent_42%),linear-gradient(135deg,#e2e8f0,#f8fafc)] p-3">
+      <div className="flex items-start gap-2">
+        <ImageOff className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+        <p className="text-[13px] leading-5 text-slate-700">{imageBrief}</p>
+      </div>
+    </div>
   );
 }
 

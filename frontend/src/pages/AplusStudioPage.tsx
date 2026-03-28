@@ -1209,6 +1209,7 @@ export function AplusStudioPage() {
         <AplusPreviewModal
           draft={editorDraft}
           language={generationTargetLanguage}
+          assets={assets}
           onClose={() => setIsPreviewOpen(false)}
           returnFocusTo={previewTriggerRef.current}
         />
