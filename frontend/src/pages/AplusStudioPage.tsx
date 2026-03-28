@@ -3,14 +3,15 @@ import {
   CheckCheck,
   FileJson2,
   FilePenLine,
+  MonitorSmartphone,
   LoaderCircle,
   Plus,
   Sparkles,
 } from "lucide-react";
-import { startTransition, useEffect, useEffectEvent, useState } from "react";
+import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { AplusAmazonPreview } from "../components/aplus/AplusAmazonPreview";
 import { AplusModuleEditorCard } from "../components/aplus/AplusModuleEditorCard";
+import { AplusPreviewModal } from "../components/aplus/AplusPreviewModal";
 import { AplusReadinessPanel } from "../components/aplus/AplusReadinessPanel";
 import { DraftMetadataBar } from "../components/aplus/DraftMetadataBar";
 import { LanguageSelector } from "../components/aplus/LanguageSelector";
@@ -125,6 +126,8 @@ export function AplusStudioPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [expandedModules, setExpandedModules] = useState<number[]>([0]);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? null;
   const selectedProduct =
@@ -705,6 +708,18 @@ export function AplusStudioPage() {
               <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
+                  ref={previewTriggerRef}
+                  onClick={() => setIsPreviewOpen(true)}
+                  disabled={!editorDraft}
+                  className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <MonitorSmartphone className="h-4 w-4" />
+                    Preview A+ layout
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => void handleValidate()}
                   disabled={!selectedDraftId || !editorDraft || isValidating}
                   className="rounded-[1.25rem] border border-sky-300/20 bg-sky-500/10 px-4 py-3 text-sm font-medium text-sky-100 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-70"
@@ -943,24 +958,7 @@ export function AplusStudioPage() {
             )}
           </article>
 
-          <section className="grid gap-6 2xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Preview</p>
-                <h3 className="mt-1 text-xl font-semibold text-white">Module composition preview</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-400">
-                  Review the draft in an Amazon-style module stack so the hierarchy, comparison section,
-                  and image overlay cues feel closer to the final A+ composition.
-                </p>
-              </div>
-
-              {!editorDraft ? null : (
-                <div className="mt-6">
-                  <AplusAmazonPreview draft={editorDraft} language={generationTargetLanguage} />
-                </div>
-              )}
-            </article>
-
+          <section>
             <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
               <div className="flex items-center gap-3">
                 <FileJson2 className="h-5 w-5 text-sky-200" />
@@ -989,6 +987,15 @@ export function AplusStudioPage() {
           </section>
         </div>
       </section>
+
+      {isPreviewOpen && editorDraft ? (
+        <AplusPreviewModal
+          draft={editorDraft}
+          language={generationTargetLanguage}
+          onClose={() => setIsPreviewOpen(false)}
+          returnFocusTo={previewTriggerRef.current}
+        />
+      ) : null}
     </div>
   );
 }
