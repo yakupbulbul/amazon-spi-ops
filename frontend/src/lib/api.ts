@@ -142,6 +142,51 @@ export type InventorySyncResponse = {
   synced_at: string;
 };
 
+export type AplusModulePayload = {
+  module_type: "hero" | "feature" | "comparison" | "faq";
+  headline: string;
+  body: string;
+  bullets: string[];
+  image_brief: string;
+};
+
+export type AplusDraftPayload = {
+  headline: string;
+  subheadline: string;
+  brand_story: string;
+  key_features: string[];
+  modules: AplusModulePayload[];
+  compliance_notes: string[];
+};
+
+export type AplusDraftResponse = {
+  id: string;
+  product_id: string;
+  product_sku: string;
+  product_asin: string;
+  product_title: string;
+  marketplace_id: string;
+  status: string;
+  brand_tone: string | null;
+  positioning: string | null;
+  draft_payload: AplusDraftPayload;
+  validated_payload: AplusDraftPayload | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AplusDraftListResponse = {
+  items: AplusDraftResponse[];
+};
+
+export type AplusPublishResponse = {
+  draft: AplusDraftResponse;
+  publish_job_id: string;
+  status: string;
+  message: string;
+  prepared_payload: Record<string, unknown>;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function apiRequest<T>(
@@ -256,6 +301,56 @@ export async function updateProductStock(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
+  });
+}
+
+export async function getAplusDrafts(token: string): Promise<AplusDraftListResponse> {
+  return apiRequest<AplusDraftListResponse>("/aplus/drafts", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function generateAplusDraft(
+  token: string,
+  payload: { product_id: string; brand_tone?: string; positioning?: string },
+): Promise<AplusDraftResponse> {
+  return apiRequest<AplusDraftResponse>("/aplus/generate", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function validateAplusDraft(
+  token: string,
+  payload: { draft_id: string; draft_payload: AplusDraftPayload },
+): Promise<AplusDraftResponse> {
+  return apiRequest<AplusDraftResponse>("/aplus/validate", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function publishAplusDraft(
+  token: string,
+  draftId: string,
+): Promise<AplusPublishResponse> {
+  return apiRequest<AplusPublishResponse>("/aplus/publish", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ draft_id: draftId }),
   });
 }
 
