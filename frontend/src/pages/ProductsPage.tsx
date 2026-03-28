@@ -2,9 +2,11 @@ import {
   AlertTriangle,
   Boxes,
   CloudDownload,
+  PencilLine,
   RefreshCcw,
   PackageSearch,
   Search,
+  ShoppingBag,
   X,
 } from "lucide-react";
 import {
@@ -79,6 +81,35 @@ function formatTimestamp(value: string | null): string {
 
 function getDefaultCurrency(product: ProductListItem): string {
   return product.price_currency ?? marketplaceCurrencyDefaults[product.marketplace_id] ?? "USD";
+}
+
+function getDialogTitle(dialogState: MutationDialogState): string {
+  return dialogState.type === "price" ? "Change listing price" : "Change available stock";
+}
+
+function getDialogIntro(dialogState: MutationDialogState): string {
+  return dialogState.type === "price"
+    ? "Review the current price, enter the new marketplace price, and save the update to Amazon."
+    : "Review the current available quantity, enter the new stock number, and save the update to Amazon.";
+}
+
+function getCurrentValueLabel(dialogState: MutationDialogState): string {
+  return dialogState.type === "price"
+    ? formatCurrency(dialogState.product.price_amount, dialogState.product.price_currency)
+    : `${dialogState.product.inventory?.available_quantity ?? 0} units`;
+}
+
+function getPendingValueLabel(
+  dialogState: MutationDialogState,
+  priceInput: string,
+  currencyInput: string,
+  stockInput: string,
+): string {
+  if (dialogState.type === "price") {
+    return priceInput ? `${currencyInput.trim().toUpperCase()} ${priceInput}` : "Enter a new price";
+  }
+
+  return stockInput ? `${stockInput} units` : "Enter a new quantity";
 }
 
 type MutationDialogState =
@@ -549,16 +580,18 @@ export function ProductsPage() {
                     <button
                       type="button"
                       onClick={() => openPriceDialog(product)}
-                      className="rounded-full border border-sky-300/20 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20"
+                      className="inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20"
                     >
-                      Edit price
+                      <PencilLine className="h-3.5 w-3.5" />
+                      Change price
                     </button>
                     <button
                       type="button"
                       onClick={() => openStockDialog(product)}
-                      className="rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-100 transition hover:bg-amber-400/20"
+                      className="inline-flex items-center gap-2 rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-100 transition hover:bg-amber-400/20"
                     >
-                      Edit stock
+                      <ShoppingBag className="h-3.5 w-3.5" />
+                      Change stock
                     </button>
                   </div>
                 </article>
@@ -588,11 +621,9 @@ export function ProductsPage() {
                 <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
                   {dialogState.type === "price" ? "Price update" : "Stock update"}
                 </p>
-                <h4 className="mt-2 text-2xl font-semibold text-white">{dialogState.product.title}</h4>
+                <h4 className="mt-2 text-2xl font-semibold text-white">{getDialogTitle(dialogState)}</h4>
                 <p className="mt-2 text-sm leading-6 text-slate-400">
-                  Confirm the new {dialogState.type} for SKU {dialogState.product.sku}. This writes
-                  an audit log entry and updates the local state after the backend mutation
-                  succeeds.
+                  {getDialogIntro(dialogState)}
                 </p>
               </div>
               <button
@@ -612,17 +643,34 @@ export function ProductsPage() {
                 void submitMutation();
               }}
             >
-              <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-300">
-                {dialogState.type === "price"
-                  ? `Current price: ${formatCurrency(dialogState.product.price_amount, dialogState.product.price_currency)}`
-                  : `Current available quantity: ${dialogState.product.inventory?.available_quantity ?? 0}`}
+              <div className="grid gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-2">
+                <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Product</p>
+                  <p className="mt-2 text-sm font-medium text-white">{dialogState.product.title}</p>
+                  <p className="mt-2 text-xs text-slate-400">
+                    SKU {dialogState.product.sku} · {dialogState.product.marketplace_id}
+                  </p>
+                </div>
+                <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Current value</p>
+                  <p className="mt-2 text-lg font-semibold text-white">
+                    {getCurrentValueLabel(dialogState)}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-400">
+                    This is the value currently shown in the local Amazon catalog mirror.
+                  </p>
+                </div>
               </div>
 
               <div className="mt-6 space-y-5">
+                <div className="rounded-[1.25rem] border border-sky-300/15 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+                  Step 1: enter the new value below. Step 2: click save. The update is sent to Amazon immediately.
+                </div>
+
                 {dialogState.type === "price" ? (
                   <>
                     <label className="block space-y-2">
-                      <span className="text-sm text-slate-300">Price amount</span>
+                      <span className="text-sm text-slate-300">New price amount</span>
                       <input
                         type="number"
                         min="0"
@@ -633,7 +681,7 @@ export function ProductsPage() {
                       />
                     </label>
                     <label className="block space-y-2">
-                      <span className="text-sm text-slate-300">Currency</span>
+                      <span className="text-sm text-slate-300">Currency code</span>
                       <input
                         type="text"
                         value={currencyInput}
@@ -648,7 +696,7 @@ export function ProductsPage() {
                   </>
                 ) : (
                   <label className="block space-y-2">
-                    <span className="text-sm text-slate-300">Available quantity</span>
+                    <span className="text-sm text-slate-300">New available quantity</span>
                     <input
                       type="number"
                       min="0"
@@ -661,6 +709,13 @@ export function ProductsPage() {
                 )}
               </div>
 
+              <div className="mt-6 rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">New value to save</p>
+                <p className="mt-2 text-lg font-semibold text-white">
+                  {getPendingValueLabel(dialogState, priceInput, currencyInput, stockInput)}
+                </p>
+              </div>
+
               {dialogError ? (
                 <div className="mt-6 flex items-start gap-3 rounded-[1.25rem] border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -669,7 +724,7 @@ export function ProductsPage() {
               ) : null}
 
               <div className="mt-6 rounded-[1.25rem] border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                Confirming this action will send the mutation through the backend workflow immediately.
+                Save change will send this update through the backend workflow immediately and write an audit log entry.
               </div>
 
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -685,7 +740,11 @@ export function ProductsPage() {
                   disabled={isMutating}
                   className="rounded-[1.25rem] bg-amber-300 px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {isMutating ? "Applying..." : "Confirm update"}
+                  {isMutating
+                    ? "Saving..."
+                    : dialogState.type === "price"
+                      ? "Save price change"
+                      : "Save stock change"}
                 </button>
               </div>
             </form>
