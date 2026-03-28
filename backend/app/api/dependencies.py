@@ -4,9 +4,11 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db_session
 from app.models.entities import User
 from app.services.ai.openai_service import OpenAiAplusService
+from app.services.aplus_asset_service import AplusAssetService
 from app.services.aplus_service import AplusService
 from app.services.amazon.service import AmazonSpApiService
 from app.services.auth_service import AuthService
@@ -16,6 +18,7 @@ from app.services.inventory_service import InventoryService
 from app.services.notification_service import NotificationService
 from app.services.product_service import ProductService
 from app.services.user_service import UserService
+from app.services.media_storage import MediaStorageService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -40,12 +43,27 @@ def get_openai_aplus_service() -> OpenAiAplusService:
     return OpenAiAplusService()
 
 
+def get_media_storage_service() -> MediaStorageService:
+    return MediaStorageService()
+
+
 def get_aplus_service(
     db_session: Session = Depends(get_db_session),
     amazon_service: AmazonSpApiService = Depends(get_amazon_service),
     openai_service: OpenAiAplusService = Depends(get_openai_aplus_service),
 ) -> AplusService:
     return AplusService(db_session, amazon_service, openai_service)
+
+
+def get_aplus_asset_service(
+    db_session: Session = Depends(get_db_session),
+    storage_service: MediaStorageService = Depends(get_media_storage_service),
+) -> AplusAssetService:
+    return AplusAssetService(
+        db_session,
+        storage_service,
+        max_upload_bytes=settings.aplus_upload_max_bytes,
+    )
 
 
 def get_notification_service(

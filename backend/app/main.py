@@ -2,11 +2,13 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.core.migrations import run_migrations
+from app.services.media_storage import MediaStorageService
 from app.services.bootstrap_service import (
     align_sample_catalog_marketplace,
     bootstrap_admin_user,
@@ -22,6 +24,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     bootstrap_admin_user()
     bootstrap_sample_catalog()
     align_sample_catalog_marketplace()
+    MediaStorageService().ensure_directories()
     yield
 
 app = FastAPI(
@@ -32,3 +35,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(api_router, prefix="/api")
+app.mount(
+    settings.media_url_prefix,
+    StaticFiles(directory=settings.media_root),
+    name="media",
+)

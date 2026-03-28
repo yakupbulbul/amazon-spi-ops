@@ -1,5 +1,6 @@
 from app.core.database import Base
 from app.models.entities import (
+    AplusAsset,
     AplusDraft,
     AplusPublishJob,
     AppSetting,
@@ -15,6 +16,7 @@ from app.models.entities import (
 )
 
 __all__ = [
+    "AplusAsset",
     "AplusDraft",
     "AplusPublishJob",
     "AppSetting",

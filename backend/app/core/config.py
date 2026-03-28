@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     seller_id: str = Field(default="", alias="SELLER_ID")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    openai_image_model: str = Field(default="gpt-image-1", alias="OPENAI_IMAGE_MODEL")
     slack_webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
     aws_region: str = Field(default="", alias="AWS_REGION")
     sp_api_endpoint: str = Field(
@@ -37,6 +38,9 @@ class Settings(BaseSettings):
     admin_email: str = Field(default="admin@example.com", alias="ADMIN_EMAIL")
     admin_password: str = Field(default="change-me-admin", alias="ADMIN_PASSWORD")
     access_token_expire_minutes: int = Field(default=720, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    media_root: Path = Field(default=ROOT_DIR / "storage", alias="MEDIA_ROOT")
+    media_url_prefix: str = Field(default="/media", alias="MEDIA_URL_PREFIX")
+    aplus_upload_max_bytes: int = Field(default=8 * 1024 * 1024, alias="APLUS_UPLOAD_MAX_BYTES")
 
     model_config = SettingsConfigDict(
         env_file=(ROOT_DIR / ".env",),

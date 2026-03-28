@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
-from app.api.dependencies import get_aplus_service, get_current_user
+from app.api.dependencies import get_aplus_asset_service, get_aplus_service, get_current_user
 from app.models.entities import User
 from app.schemas.aplus import (
+    AplusAssetListResponse,
+    AplusAssetResponse,
     AplusDraftListResponse,
     AplusDraftResponse,
     AplusGenerateRequest,
@@ -14,6 +16,7 @@ from app.schemas.aplus import (
     AplusPublishResponse,
     AplusValidateRequest,
 )
+from app.services.aplus_asset_service import AplusAssetService
 from app.services.aplus_service import AplusService
 
 router = APIRouter(prefix="/aplus", tags=["aplus"])
@@ -25,6 +28,44 @@ def read_aplus_drafts(
     aplus_service: AplusService = Depends(get_aplus_service),
 ) -> AplusDraftListResponse:
     return aplus_service.list_drafts()
+
+
+@router.get("/assets", response_model=AplusAssetListResponse)
+def read_aplus_assets(
+    product_id: str | None = Query(default=None),
+    _: User = Depends(get_current_user),
+    asset_service: AplusAssetService = Depends(get_aplus_asset_service),
+) -> AplusAssetListResponse:
+    try:
+        return asset_service.list_assets(
+            product_id=UUID(product_id) if product_id else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.post("/assets/upload", response_model=AplusAssetResponse)
+async def upload_aplus_asset(
+    file: UploadFile = File(...),
+    asset_scope: str = Form(...),
+    product_id: str | None = Form(default=None),
+    label: str | None = Form(default=None),
+    current_user: User = Depends(get_current_user),
+    asset_service: AplusAssetService = Depends(get_aplus_asset_service),
+) -> AplusAssetResponse:
+    try:
+        return await asset_service.upload_asset(
+            file=file,
+            asset_scope=asset_scope,
+            label=label,
+            product_id=UUID(product_id) if product_id else None,
+            uploaded_by=current_user,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "Product not found.":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail) from exc
 
 
 @router.post("/generate", response_model=AplusDraftResponse)
