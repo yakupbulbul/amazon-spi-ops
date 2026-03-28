@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db_session
 from app.models.entities import User
 from app.services.auth_service import AuthService
+from app.services.dashboard_service import DashboardService
 from app.services.user_service import UserService
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -18,6 +19,10 @@ def get_auth_service(db_session: Session = Depends(get_db_session)) -> AuthServi
 
 def get_user_service(db_session: Session = Depends(get_db_session)) -> UserService:
     return UserService(db_session)
+
+
+def get_dashboard_service(db_session: Session = Depends(get_db_session)) -> DashboardService:
+    return DashboardService(db_session)
 
 
 def get_current_user(
