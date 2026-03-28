@@ -1,10 +1,18 @@
-import { AlertTriangle, RefreshCcw, Search, Warehouse } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock3,
+  RefreshCcw,
+  Search,
+  ShieldAlert,
+  Warehouse,
+} from "lucide-react";
 import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AlertCard } from "../components/inventory/AlertCard";
 import {
   formatAbsoluteTimestamp,
+  formatMarketplaceLabel,
   formatRelativeTimestamp,
 } from "../components/inventory/formatters";
 import { InventoryRow } from "../components/inventory/InventoryRow";
@@ -92,10 +100,8 @@ export function InventoryPage() {
     [inventoryItems],
   );
 
-  const lowOrCriticalCount = filteredItems.filter(
-    (item) => item.alert_status !== "healthy",
-  ).length;
-  const outOfStockCount = filteredItems.filter((item) => item.alert_status === "out_of_stock").length;
+  const lowStockCount = inventoryItems.filter((item) => item.alert_status === "low").length;
+  const outOfStockCount = inventoryItems.filter((item) => item.alert_status === "out_of_stock").length;
 
   const latestCapturedAt = useMemo(() => {
     const timestamps = inventoryItems
@@ -115,6 +121,24 @@ export function InventoryPage() {
       return new Date(item.captured_at).getTime() >= dayAgo;
     }).length;
   }, [filteredItems]);
+
+  const filteredAlerts = useMemo(() => {
+    const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
+
+    return alerts.filter((alert) => {
+      const matchesQuery =
+        !normalizedQuery ||
+        [alert.product_name, alert.sku, alert.message].join(" ").toLowerCase().includes(normalizedQuery);
+
+      const matchesHealth =
+        healthFilter === "all" ||
+        alert.severity === healthFilter ||
+        (healthFilter === "low" && alert.severity === "warning") ||
+        (healthFilter === "out_of_stock" && alert.severity === "critical");
+
+      return matchesQuery && matchesHealth;
+    });
+  }, [alerts, deferredSearchQuery, healthFilter]);
 
   async function handleSync() {
     if (!token) {
@@ -145,65 +169,97 @@ export function InventoryPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-        <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,_rgba(16,185,129,0.16),_rgba(15,23,42,0.95)_42%,_rgba(2,6,23,1)_100%)] p-6 shadow-2xl shadow-black/30 sm:p-8">
-          <p className="text-xs uppercase tracking-[0.32em] text-emerald-100/70">Inventory operations</p>
-          <h2 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
-            Inventory posture across tracked SKUs with manual sync and alert visibility.
-          </h2>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-            This screen now reflects the local inventory snapshot store and alert log. Manual sync
-            already flows through the Amazon adapter abstraction, using the mock adapter until live
-            SP-API credentials are configured.
-          </p>
-          <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs text-slate-200">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            Last synced {formatRelativeTimestamp(latestCapturedAt)}
-            {latestCapturedAt ? (
-              <span className="text-slate-400">({formatAbsoluteTimestamp(latestCapturedAt)})</span>
-            ) : null}
+    <div className="space-y-6">
+      <section className="rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,_rgba(15,23,42,0.98),_rgba(2,6,23,1)_100%)] p-6 shadow-2xl shadow-black/30 sm:p-8">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs uppercase tracking-[0.32em] text-sky-100/70">Inventory operations</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+              Inventory health across your active Amazon catalog.
+            </h1>
+            <p className="mt-4 text-sm leading-7 text-slate-300 sm:text-base">
+              Scan current stock levels, focus on risk states quickly, and move from inventory
+              review to product actions without digging through dense rows.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-200">
+              <div className="flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-sky-300" />
+                <span className="font-medium">Last synced {formatRelativeTimestamp(latestCapturedAt)}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                {latestCapturedAt ? formatAbsoluteTimestamp(latestCapturedAt) : "No inventory sync has run yet."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="inline-flex items-center justify-center gap-2 rounded-[1.25rem] bg-emerald-300 px-5 py-3 text-sm font-medium text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <RefreshCcw className={["h-4 w-4", isSyncing ? "animate-spin" : ""].join(" ")} />
+              {isSyncing ? "Syncing inventory..." : "Sync inventory"}
+            </button>
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             icon={Warehouse}
-            label="Visible inventory rows"
-            value={filteredItems.length}
-            note="Filtered from the latest snapshot set."
+            label="Total products"
+            value={inventoryItems.length}
+            note={`${filteredItems.length} currently visible in the table.`}
           />
           <SummaryCard
             icon={AlertTriangle}
-            label="Rows needing attention"
-            value={lowOrCriticalCount}
-            note={`${outOfStockCount} are currently out of stock.`}
-            tone={lowOrCriticalCount > 0 ? "warning" : "success"}
+            label="Low stock items"
+            value={lowStockCount}
+            note="Products approaching the configured threshold."
+            tone={lowStockCount > 0 ? "warning" : "success"}
+          />
+          <SummaryCard
+            icon={ShieldAlert}
+            label="Out of stock"
+            value={outOfStockCount}
+            note="Products that need immediate replenishment."
+            tone={outOfStockCount > 0 ? "danger" : "success"}
           />
           <SummaryCard
             icon={RefreshCcw}
             label="Recently updated"
             value={recentlyUpdatedCount}
-            note="Rows refreshed in the last 24 hours."
+            note="Rows refreshed within the last 24 hours."
           />
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
-        <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Inventory table</p>
-              <h3 className="mt-2 text-xl font-semibold text-white">Latest quantities</h3>
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <article className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950/60">
+          <div className="border-b border-white/10 px-5 py-5 sm:px-6 sm:py-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Inventory table</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Current stock snapshot</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Each row is interactive and leads back to product management for follow-up changes.
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">
+                <span className="h-2 w-2 rounded-full bg-sky-400" />
+                {filteredItems.length} visible rows
+              </div>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <label className="flex w-full items-center gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 sm:min-w-80">
+
+            <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_220px]">
+              <label className="flex w-full items-center gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3">
                 <Search className="h-4 w-4 text-slate-500" />
                 <input
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search by SKU, ASIN, title, or marketplace"
+                  placeholder="Search by product title, SKU, ASIN, or marketplace"
                   className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
                 />
               </label>
@@ -217,7 +273,7 @@ export function InventoryPage() {
                 </option>
                 {marketplaceOptions.map((marketplaceId) => (
                   <option key={marketplaceId} value={marketplaceId} className="bg-slate-950">
-                    {marketplaceId}
+                    {formatMarketplaceLabel(marketplaceId)}
                   </option>
                 ))}
               </select>
@@ -227,7 +283,7 @@ export function InventoryPage() {
                 className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
               >
                 <option value="all" className="bg-slate-950">
-                  All health states
+                  All stock states
                 </option>
                 <option value="healthy" className="bg-slate-950">
                   Healthy
@@ -239,93 +295,147 @@ export function InventoryPage() {
                   Out of stock
                 </option>
               </select>
-              <button
-                type="button"
-                onClick={handleSync}
-                disabled={isSyncing}
-                className="inline-flex items-center justify-center gap-2 rounded-[1.25rem] border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <RefreshCcw className={["h-4 w-4", isSyncing ? "animate-spin" : ""].join(" ")} />
-                {isSyncing ? "Syncing..." : "Sync inventory"}
-              </button>
             </div>
           </div>
 
           {syncMessage ? (
-            <div className="mt-5 rounded-[1.25rem] border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+            <div className="mx-5 mt-5 rounded-[1.25rem] border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100 sm:mx-6">
               {syncMessage}
             </div>
           ) : null}
 
-          {isLoading ? (
-            <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300">
-              Loading inventory...
-            </div>
-          ) : error ? (
-            <div className="mt-6 flex items-start gap-3 rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-6 text-sm text-rose-100">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          ) : filteredItems.length === 0 ? (
-            <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] px-6 py-12 text-center">
-              <Warehouse className="mx-auto h-10 w-10 text-slate-500" />
-              <h4 className="mt-4 text-lg font-medium text-white">No inventory rows match this search.</h4>
-              <p className="mt-3 text-sm leading-6 text-slate-400">
-                Clear the filter or search with a different SKU, ASIN, or product title.
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="mt-6 space-y-4 lg:hidden">
-                {filteredItems.map((item) => (
-                  <InventoryRow
-                    key={item.product_id}
-                    item={item}
-                    variant="mobile"
-                    onSelect={() => navigate("/products")}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-6 hidden overflow-hidden rounded-[1.5rem] border border-white/10 lg:block">
-                <table className="min-w-full table-fixed border-collapse">
-                  <thead className="bg-white/[0.04]">
-                    <tr className="text-left text-xs uppercase tracking-[0.24em] text-slate-500">
-                      <th className="px-5 py-4 font-medium">Product</th>
-                      <th className="px-5 py-4 font-medium">Available</th>
-                      <th className="px-5 py-4 font-medium">Reserved</th>
-                      <th className="px-5 py-4 font-medium">Inbound</th>
-                      <th className="px-5 py-4 font-medium">Threshold</th>
-                      <th className="px-5 py-4 font-medium">Status</th>
-                      <th className="px-5 py-4 font-medium">Last updated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredItems.map((item) => (
-                      <InventoryRow
-                        key={item.product_id}
-                        item={item}
-                        variant="desktop"
-                        onSelect={() => navigate("/products")}
-                      />
+          <div className="p-5 sm:p-6">
+            {isLoading ? (
+              <div className="space-y-4">
+                <div className="hidden overflow-hidden rounded-[1.5rem] border border-white/10 lg:block">
+                  <div className="grid grid-cols-[minmax(0,2fr)_repeat(4,minmax(90px,1fr))_180px_140px] gap-4 border-b border-white/10 bg-white/[0.03] px-5 py-4">
+                    {Array.from({ length: 7 }).map((_, index) => (
+                      <div key={index} className="h-4 animate-pulse rounded bg-white/10" />
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                  <div className="space-y-0">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <div
+                        key={index}
+                        className="grid grid-cols-[minmax(0,2fr)_repeat(4,minmax(90px,1fr))_180px_140px] gap-4 border-b border-white/10 px-5 py-5"
+                      >
+                        {Array.from({ length: 7 }).map((__, cellIndex) => (
+                          <div
+                            key={cellIndex}
+                            className="h-14 animate-pulse rounded-2xl bg-white/[0.06]"
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-4 lg:hidden">
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="h-44 animate-pulse rounded-[1.5rem] border border-white/10 bg-white/[0.04]"
+                    />
+                  ))}
+                </div>
               </div>
-            </>
-          )}
-        </article>
-
-        <article className="rounded-[1.75rem] border border-white/10 bg-slate-950/50 p-5 sm:p-6">
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Alert queue</p>
-          <h3 className="mt-2 text-xl font-semibold text-white">Active inventory alerts</h3>
-          <div className="mt-5 space-y-4">
-            {alerts.length === 0 ? (
-              <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
-                Inventory alerts will appear here after the next sync if any SKUs drop below threshold.
+            ) : error ? (
+              <div className="flex items-start gap-3 rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-6 text-sm text-rose-100">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <div className="rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] px-6 py-12 text-center">
+                <Warehouse className="mx-auto h-10 w-10 text-slate-500" />
+                <h3 className="mt-4 text-lg font-medium text-white">No inventory rows match the current filters.</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-400">
+                  Try a different keyword, reset the status filter, or change the selected marketplace.
+                </p>
               </div>
             ) : (
-              alerts.map((alert) => (
+              <>
+                <div className="space-y-4 lg:hidden">
+                  {filteredItems.map((item) => (
+                    <InventoryRow
+                      key={item.product_id}
+                      item={item}
+                      variant="mobile"
+                      onSelect={() => navigate("/products")}
+                    />
+                  ))}
+                </div>
+
+                <div className="hidden overflow-hidden rounded-[1.5rem] border border-white/10 lg:block">
+                  <table className="min-w-full table-fixed border-collapse">
+                    <thead className="bg-white/[0.04]">
+                      <tr className="text-left text-xs uppercase tracking-[0.24em] text-slate-500">
+                        <th className="w-[30%] px-5 py-4 font-medium">Product</th>
+                        <th className="px-5 py-4 font-medium">Available</th>
+                        <th className="px-5 py-4 font-medium">Reserved</th>
+                        <th className="px-5 py-4 font-medium">Inbound</th>
+                        <th className="px-5 py-4 font-medium">Threshold</th>
+                        <th className="px-5 py-4 font-medium">Status</th>
+                        <th className="px-5 py-4 font-medium">Last updated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredItems.map((item) => (
+                        <InventoryRow
+                          key={item.product_id}
+                          item={item}
+                          variant="desktop"
+                          onSelect={() => navigate("/products")}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </article>
+
+        <aside className="rounded-[1.75rem] border border-white/10 bg-slate-950/60 p-5 sm:p-6">
+          <div>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-3 text-amber-100">
+                    <ShieldAlert className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Alert queue</p>
+                    <h2 className="mt-1 text-xl font-semibold text-white">Inventory alerts</h2>
+                  </div>
+                </div>
+                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+                  {filteredAlerts.length}
+                </span>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-slate-400">
+                Critical and warning alerts stay visible here so replenishment issues are easy to triage beside the table.
+              </p>
+            </div>
+          <div className="mt-6 space-y-4">
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-44 animate-pulse rounded-[1.5rem] border border-white/10 bg-white/[0.04]"
+                />
+              ))
+            ) : error ? (
+              <div className="rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                Alerts are temporarily unavailable while inventory data is failing to load.
+              </div>
+            ) : filteredAlerts.length === 0 ? (
+              <div className="rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6 text-center">
+                <ShieldAlert className="mx-auto h-9 w-9 text-slate-500" />
+                <h3 className="mt-4 text-base font-medium text-white">No active alerts</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Inventory alerts will appear here when a SKU falls below its threshold.
+                </p>
+              </div>
+            ) : (
+              filteredAlerts.map((alert) => (
                 <AlertCard
                   key={`${alert.product_id}-${alert.created_at}`}
                   alert={alert}
@@ -334,7 +444,7 @@ export function InventoryPage() {
               ))
             )}
           </div>
-        </article>
+        </aside>
       </section>
     </div>
   );

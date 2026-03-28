@@ -19,7 +19,7 @@ export function AlertCard({ alert, onViewProduct }: AlertCardProps) {
   return (
     <article
       className={[
-        "rounded-[1.5rem] border p-4",
+        "rounded-[1.5rem] border p-4 shadow-lg shadow-black/10",
         severityStyles[alert.severity] ?? severityStyles.critical,
       ].join(" ")}
     >
@@ -34,6 +34,7 @@ export function AlertCard({ alert, onViewProduct }: AlertCardProps) {
       </div>
 
       <div className="mt-4 space-y-2">
+        <p className="text-xs uppercase tracking-[0.22em] text-slate-300">Issue</p>
         <p className="text-sm font-medium capitalize text-white">
           {formatStatusLabel(alert.severity)}
         </p>
