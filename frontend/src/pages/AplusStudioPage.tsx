@@ -3,13 +3,13 @@ import {
   CheckCheck,
   FileJson2,
   FilePenLine,
-  Lightbulb,
   LoaderCircle,
   Plus,
   Sparkles,
 } from "lucide-react";
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 
+import { AplusAmazonPreview } from "../components/aplus/AplusAmazonPreview";
 import { AplusModuleEditorCard } from "../components/aplus/AplusModuleEditorCard";
 import { AplusReadinessPanel } from "../components/aplus/AplusReadinessPanel";
 import { DraftMetadataBar } from "../components/aplus/DraftMetadataBar";
@@ -945,39 +945,18 @@ export function AplusStudioPage() {
 
           <section className="grid gap-6 2xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
-              <div className="flex items-center gap-3">
-                <Lightbulb className="h-5 w-5 text-amber-200" />
-                <div>
-                  <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Preview</p>
-                  <h3 className="mt-1 text-xl font-semibold text-white">Editorial view</h3>
-                </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Preview</p>
+                <h3 className="mt-1 text-xl font-semibold text-white">Module composition preview</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Review the draft in an Amazon-style module stack so the hierarchy, comparison section,
+                  and image overlay cues feel closer to the final A+ composition.
+                </p>
               </div>
 
               {!editorDraft ? null : (
-                <div className="mt-6 space-y-5">
-                  <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Headline</p>
-                    <h4 className="mt-3 text-2xl font-semibold text-white">{editorDraft.headline}</h4>
-                    <p className="mt-3 text-sm leading-6 text-slate-300">{editorDraft.subheadline}</p>
-                  </div>
-
-                  <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Brand story</p>
-                    <p className="mt-3 text-sm leading-7 text-slate-300">{editorDraft.brand_story}</p>
-                  </div>
-
-                  <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
-                      Key features in {formatLanguageLabel(generationTargetLanguage)}
-                    </p>
-                    <div className="mt-4 space-y-3">
-                      {editorDraft.key_features.map((feature) => (
-                        <div key={feature} className="rounded-[1.25rem] bg-slate-900/70 px-4 py-3 text-sm text-slate-200">
-                          {feature}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                <div className="mt-6">
+                  <AplusAmazonPreview draft={editorDraft} language={generationTargetLanguage} />
                 </div>
               )}
             </article>
