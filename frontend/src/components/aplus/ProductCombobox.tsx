@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, Search } from "lucide-react";
+import { BadgeInfo, Check, ChevronsUpDown, Search } from "lucide-react";
 import {
   Fragment,
   useDeferredValue,
@@ -104,12 +104,17 @@ export function ProductCombobox({
 
   return (
     <div ref={rootRef} className="space-y-3">
-      <label htmlFor={inputId} className="block text-sm text-slate-300">
-        Product
-      </label>
+      <div className="space-y-1">
+        <label htmlFor={inputId} className="block text-sm font-medium text-slate-200">
+          Product
+        </label>
+        <p className="text-xs leading-5 text-slate-500">
+          Search by SKU, ASIN, title, or brand to find the right listing quickly.
+        </p>
+      </div>
 
       <div className="relative">
-        <div className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3">
+        <div className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-slate-950/70 px-4 py-3 transition focus-within:border-sky-300/30 focus-within:bg-slate-950">
           <Search className="h-4 w-4 text-slate-500" />
           <input
             id={inputId}
@@ -208,13 +213,19 @@ export function ProductCombobox({
         ) : null}
       </div>
 
-      <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-3">
-        <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Selected product</p>
+      <div className="rounded-[1.5rem] bg-white/[0.03] px-4 py-4">
+        <div className="flex items-center gap-2 text-slate-400">
+          <BadgeInfo className="h-4 w-4" />
+          <p className="text-xs uppercase tracking-[0.22em]">Selected product</p>
+        </div>
         {selectedProduct ? (
           <>
-            <p className="mt-2 text-sm font-medium text-white">{selectedProduct.title}</p>
+            <p className="mt-3 text-sm font-medium leading-6 text-white">{selectedProduct.title}</p>
+            <p className="mt-2 text-xs text-slate-500">
+              {selectedProduct.brand ?? "Unbranded"} · {selectedProduct.marketplace_id}
+            </p>
             <p className="mt-1 text-xs text-slate-400">
-              SKU {selectedProduct.sku} · ASIN {selectedProduct.asin}
+              SKU {selectedProduct.sku} <span className="mx-2 text-slate-600">•</span> ASIN {selectedProduct.asin}
             </p>
           </>
         ) : (
