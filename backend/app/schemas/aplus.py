@@ -14,6 +14,15 @@ class AplusModulePayload(BaseModel):
     body: str = Field(min_length=20, max_length=600)
     bullets: list[str] = Field(min_length=0, max_length=4)
     image_brief: str = Field(min_length=10, max_length=240)
+    image_mode: Literal["generated", "uploaded", "existing_asset", "none"] = "none"
+    image_prompt: str | None = Field(default=None, max_length=600)
+    generated_image_url: str | None = Field(default=None, max_length=1024)
+    uploaded_image_url: str | None = Field(default=None, max_length=1024)
+    selected_asset_id: str | None = Field(default=None, max_length=64)
+    reference_asset_ids: list[str] = Field(default_factory=list, max_length=8)
+    overlay_text: str | None = Field(default=None, max_length=160)
+    image_status: Literal["idle", "queued", "generating", "completed", "failed"] = "idle"
+    image_error_message: str | None = Field(default=None, max_length=1024)
 
 
 class AplusDraftPayload(BaseModel):
