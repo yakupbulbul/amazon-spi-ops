@@ -7,6 +7,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ProductsPage } from "./pages/ProductsPage";
 import { SectionPage } from "./pages/SectionPage";
 import "./index.css";
 
@@ -25,17 +26,7 @@ const router = createBrowserRouter([
               { index: true, element: <DashboardPage /> },
               {
                 path: "products",
-                element: (
-                  <SectionPage
-                    eyebrow="Catalog workspace"
-                    title="Products"
-                    description="This area will host SKU search, product detail views, and listing mutation controls for price and stock updates."
-                    bullets={[
-                      "Prepared for searchable product tables and per-SKU actions.",
-                      "Designed to support confirmation dialogs, mutation status, and audit history.",
-                    ]}
-                  />
-                ),
+                element: <ProductsPage />,
               },
               {
                 path: "aplus",
