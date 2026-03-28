@@ -1,5 +1,6 @@
 from app.core.config import Settings
 from app.schemas.aplus import AplusDraftPayload
+from app.services.aplus_readiness import build_aplus_readiness_report
 from app.services.ai.openai_service import OpenAiAplusService
 
 
@@ -134,3 +135,95 @@ def test_aplus_structured_output_schema_requires_all_module_fields() -> None:
         "bullets",
         "image_brief",
     }
+
+
+def test_publish_readiness_report_flags_blockers_and_warnings() -> None:
+    payload = AplusDraftPayload(
+        headline="The best choice for every drive",
+        subheadline="Premium quality comfort that feels perfect on every trip without compromise.",
+        brand_story=(
+            "This premium quality seat cover is the best option for every driver and delivers premium "
+            "quality comfort that works great for everyday use across every routine."
+        ),
+        key_features=[
+            "Premium quality materials for everyday use",
+            "Premium quality materials for everyday use",
+            "Great for everyday use",
+        ],
+        modules=[
+            {
+                "module_type": "hero",
+                "headline": "Premium quality comfort",
+                "body": "Premium quality comfort for every ride and great for everyday use.",
+                "bullets": [
+                    "Premium quality materials for everyday use",
+                    "Premium quality materials for everyday use",
+                ],
+                "image_brief": "Show the product in use with a premium quality overlay for everyday comfort.",
+            },
+            {
+                "module_type": "feature",
+                "headline": "Great for everyday use",
+                "body": "Great for everyday use and premium quality comfort in every setting.",
+                "bullets": [
+                    "Great for everyday use",
+                ],
+                "image_brief": "Use a generic comfort visual.",
+            },
+            {
+                "module_type": "feature",
+                "headline": "Premium quality comfort",
+                "body": "Premium quality comfort for every ride and great for everyday use.",
+                "bullets": [
+                    "Great for everyday use",
+                ],
+                "image_brief": "Use a generic comfort visual.",
+            },
+        ],
+        compliance_notes=[
+            "Verify claims before publishing.",
+            "Review visual guidance before launch.",
+        ],
+    )
+
+    report = build_aplus_readiness_report(
+        draft_payload=payload,
+        checked_payload="validated",
+    )
+
+    assert report.is_publish_ready is False
+    assert "Comparison section" in report.missing_sections
+    assert any(issue.code == "unsupported_claim" for issue in report.blocking_errors)
+    assert any(issue.code == "missing_comparison" for issue in report.blocking_errors)
+    assert any(issue.code == "repeated_copy" for issue in report.warnings)
+    assert any(issue.code == "vague_claim" for issue in report.warnings)
+
+
+def test_mock_generation_is_publish_ready_under_new_readiness_rules() -> None:
+    generator = OpenAiAplusService(
+        Settings(
+            OPENAI_API_KEY="",
+            OPENAI_MODEL="gpt-4o-mini",
+        )
+    )
+
+    draft = generator.generate_aplus_draft(
+        product_context={
+            "title": "Trail Backpack",
+            "brand": "Nordvale",
+            "sku": "TRAIL-42",
+            "asin": "B0TESTEN01",
+            "marketplace_id": "A1F83G8C2ARO7P",
+        },
+        brand_tone="premium and technical",
+        positioning="commuters and day-hike users",
+        source_language="en-GB",
+    )
+
+    report = build_aplus_readiness_report(
+        draft_payload=draft,
+        checked_payload="draft",
+    )
+
+    assert report.is_publish_ready is True
+    assert report.blocking_errors == []
