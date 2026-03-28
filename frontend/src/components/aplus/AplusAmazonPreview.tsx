@@ -15,87 +15,121 @@ type AplusAmazonPreviewProps = {
   language: AplusLanguage;
 };
 
+const twoLineClampStyle = {
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical" as const,
+  overflow: "hidden",
+};
+
 export function AplusAmazonPreview({ draft, language }: AplusAmazonPreviewProps) {
   return (
-    <div className="rounded-[2rem] bg-[#f7f7f3] p-4 text-slate-900 shadow-[0_30px_80px_rgba(2,6,23,0.35)] sm:p-5">
-      <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 sm:p-6">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
-          <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white">
-            <Sparkles className="h-3.5 w-3.5" />
-            Amazon A+ layout preview
-          </span>
-          <span className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600">
-            {formatLanguageLabel(language)}
-          </span>
-          <span className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600">
-            {draft.modules.length} modules
-          </span>
+    <div className="rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.12),_transparent_32%),linear-gradient(180deg,rgba(15,23,42,0.9),rgba(2,6,23,0.95))] p-3 sm:p-4">
+      <div className="mx-auto flex h-[640px] min-h-[560px] max-h-[72vh] w-full items-center justify-center">
+        <div className="relative h-full w-full max-w-[760px] rounded-[2.1rem] border border-white/10 bg-[#cfd5da] p-3 shadow-[0_28px_90px_rgba(2,6,23,0.45)]">
+          <div className="flex h-full flex-col overflow-hidden rounded-[1.7rem] bg-[#f6f4ee]">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white">
+                  <Sparkles className="h-3 w-3" />
+                  A+ preview
+                </span>
+                <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  {formatLanguageLabel(language)}
+                </span>
+              </div>
+            </div>
+
+            <div className="h-full overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
+              <div className="mx-auto max-w-[660px] space-y-3">
+                <section className="rounded-[1.35rem] bg-[linear-gradient(135deg,#fff8e6,#ffffff_60%,#f8fafc)] p-4 shadow-sm shadow-slate-300/40">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
+                    Hero
+                  </p>
+                  <h4
+                    className="mt-2 text-xl font-semibold leading-tight text-slate-950 sm:text-[1.45rem]"
+                    style={twoLineClampStyle}
+                  >
+                    {draft.headline}
+                  </h4>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{draft.subheadline}</p>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.05fr)_minmax(220px,0.95fr)]">
+                    <div className="rounded-[1rem] bg-white p-4 shadow-sm shadow-slate-200/70">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-slate-500">
+                        Brand story
+                      </p>
+                      <p className="mt-2 text-[13px] leading-6 text-slate-600">{draft.brand_story}</p>
+                    </div>
+
+                    <div className="rounded-[1rem] border border-dashed border-slate-300 bg-slate-50 p-4">
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        <p className="text-[10px] font-medium uppercase tracking-[0.22em]">
+                          Creative direction
+                        </p>
+                      </div>
+                      <div className="mt-3 rounded-[0.95rem] bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.22),_transparent_42%),linear-gradient(135deg,#e2e8f0,#f8fafc)] p-3">
+                        <p className="text-[13px] leading-5 text-slate-700">
+                          {draft.modules[0]?.image_brief ?? "Add an image brief to preview the hero visual."}
+                        </p>
+                      </div>
+                      <div className="mt-3 inline-flex max-w-full rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white">
+                        <span className="truncate">
+                          {extractOverlayText(draft.modules[0]?.image_brief) ?? "Overlay text preview"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {draft.key_features.map((feature) => (
+                    <div
+                      key={feature}
+                      className="rounded-[1rem] border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/50"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        <p className="text-[13px] leading-5 text-slate-700">{feature}</p>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="space-y-3">
+                  {draft.modules.map((module, index) => (
+                    <ModulePreviewCard key={`${module.module_type}-${index}`} module={module} />
+                  ))}
+                </section>
+
+                <section className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <p className="text-[10px] font-medium uppercase tracking-[0.22em]">
+                      Compliance checks
+                    </p>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {draft.compliance_notes.map((note) => (
+                      <div
+                        key={note}
+                        className="rounded-[0.9rem] bg-slate-50 px-3 py-2.5 text-[13px] leading-5 text-slate-700"
+                      >
+                        {note}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <section className="mt-6 rounded-[1.5rem] bg-[linear-gradient(135deg,#fff8e6,#ffffff_55%,#f8fafc)] p-5 sm:p-6">
-          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Hero</p>
-          <h4 className="mt-3 max-w-2xl text-3xl font-semibold leading-tight text-slate-950">
-            {draft.headline}
-          </h4>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">{draft.subheadline}</p>
-          <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
-            <div className="rounded-[1.25rem] bg-white p-5 shadow-sm shadow-slate-200/70">
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Brand story</p>
-              <p className="mt-3 text-sm leading-7 text-slate-600">{draft.brand_story}</p>
-            </div>
-            <div className="rounded-[1.25rem] border border-dashed border-slate-300 bg-slate-50 p-5">
-              <div className="flex items-center gap-2 text-slate-500">
-                <ImageIcon className="h-4 w-4" />
-                <p className="text-xs uppercase tracking-[0.22em]">Creative direction</p>
-              </div>
-              <div className="mt-4 rounded-[1rem] bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.25),_transparent_44%),linear-gradient(135deg,#e2e8f0,#f8fafc)] p-4">
-                <p className="text-sm leading-6 text-slate-700">
-                  {draft.modules[0]?.image_brief ?? "Add an image brief to preview the first hero visual."}
-                </p>
-              </div>
-              <div className="mt-4 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-                {extractOverlayText(draft.modules[0]?.image_brief) ?? "Overlay text preview"}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-6 grid gap-4 lg:grid-cols-3">
-          {draft.key_features.map((feature) => (
-            <div
-              key={feature}
-              className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4"
-            >
-              <div className="flex items-start gap-3">
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                <p className="text-sm leading-6 text-slate-700">{feature}</p>
-              </div>
-            </div>
-          ))}
-        </section>
-
-        <section className="mt-6 space-y-4">
-          {draft.modules.map((module, index) => (
-            <ModulePreviewCard key={`${module.module_type}-${index}`} module={module} />
-          ))}
-        </section>
-
-        <section className="mt-6 rounded-[1.25rem] border border-slate-200 bg-slate-50 p-5">
-          <div className="flex items-center gap-2 text-slate-500">
-            <ShieldCheck className="h-4 w-4" />
-            <p className="text-xs uppercase tracking-[0.22em]">Compliance checks</p>
-          </div>
-          <div className="mt-4 grid gap-3">
-            {draft.compliance_notes.map((note) => (
-              <div
-                key={note}
-                className="rounded-[1rem] bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm shadow-slate-200/60"
-              >
-                {note}
-              </div>
-            ))}
-          </div>
-        </section>
       </div>
     </div>
   );
@@ -106,30 +140,30 @@ function ModulePreviewCard({ module }: { module: AplusModulePayload }) {
     const rows = module.bullets.map(parseComparisonRow);
 
     return (
-      <article className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
+      <article className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
         <div className="flex items-center gap-2 text-slate-500">
-          <Columns3 className="h-4 w-4" />
-          <p className="text-xs uppercase tracking-[0.22em]">Comparison module</p>
+          <Columns3 className="h-3.5 w-3.5" />
+          <p className="text-[10px] font-medium uppercase tracking-[0.22em]">Comparison module</p>
         </div>
-        <h5 className="mt-3 text-xl font-semibold text-slate-950">{module.headline}</h5>
-        <p className="mt-3 text-sm leading-6 text-slate-600">{module.body}</p>
-        <div className="mt-5 overflow-hidden rounded-[1rem] border border-slate-200">
-          <div className="grid grid-cols-[1.2fr_1fr_1fr] bg-slate-100 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-            <div className="px-4 py-3">Criteria</div>
-            <div className="border-l border-slate-200 px-4 py-3">This product</div>
-            <div className="border-l border-slate-200 px-4 py-3">Generic alternative</div>
+        <h5 className="mt-2 text-lg font-semibold leading-snug text-slate-950">{module.headline}</h5>
+        <p className="mt-2 text-[13px] leading-5 text-slate-600">{module.body}</p>
+        <div className="mt-3 overflow-hidden rounded-[0.9rem] border border-slate-200">
+          <div className="grid grid-cols-[1fr_0.95fr_0.95fr] bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            <div className="px-2.5 py-2">Criteria</div>
+            <div className="border-l border-slate-200 px-2.5 py-2">This product</div>
+            <div className="border-l border-slate-200 px-2.5 py-2">Generic</div>
           </div>
-          {rows.map((row) => (
+          {rows.map((row, index) => (
             <div
-              key={`${row.criterion}-${row.thisProduct}-${row.genericAlternative}`}
-              className="grid grid-cols-[1.2fr_1fr_1fr] border-t border-slate-200 text-sm text-slate-700"
+              key={`${row.criterion}-${row.thisProduct}-${row.genericAlternative}-${index}`}
+              className="grid grid-cols-[1fr_0.95fr_0.95fr] border-t border-slate-200 text-[12px] leading-5 text-slate-700"
             >
-              <div className="px-4 py-3">{row.criterion}</div>
-              <div className="border-l border-slate-200 px-4 py-3 text-emerald-700">
-                {row.thisProduct || "Highlighted benefit"}
+              <div className="px-2.5 py-2">{row.criterion}</div>
+              <div className="border-l border-slate-200 px-2.5 py-2 text-emerald-700">
+                {row.thisProduct || "Advantage"}
               </div>
-              <div className="border-l border-slate-200 px-4 py-3 text-slate-500">
-                {row.genericAlternative || "Basic alternative"}
+              <div className="border-l border-slate-200 px-2.5 py-2 text-slate-500">
+                {row.genericAlternative || "Baseline"}
               </div>
             </div>
           ))}
@@ -139,36 +173,38 @@ function ModulePreviewCard({ module }: { module: AplusModulePayload }) {
   }
 
   return (
-    <article className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
-      <div className="grid gap-5 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)]">
-        <div className="rounded-[1.25rem] bg-[linear-gradient(135deg,#e2e8f0,#f8fafc)] p-4">
+    <article className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
+      <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
+        <div className="rounded-[0.95rem] bg-[linear-gradient(135deg,#e2e8f0,#f8fafc)] p-3">
           <div className="flex items-center gap-2 text-slate-500">
             {module.module_type === "faq" ? (
-              <MessageSquareQuote className="h-4 w-4" />
+              <MessageSquareQuote className="h-3.5 w-3.5" />
             ) : (
-              <ImageIcon className="h-4 w-4" />
+              <ImageIcon className="h-3.5 w-3.5" />
             )}
-            <p className="text-xs uppercase tracking-[0.22em]">
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em]">
               {module.module_type === "faq" ? "Trust section" : `${module.module_type} module`}
             </p>
           </div>
-          <div className="mt-4 rounded-[1rem] bg-white/90 px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm">
+          <div className="mt-3 rounded-[0.9rem] bg-white/90 px-3 py-2.5 text-[12px] leading-5 text-slate-700 shadow-sm">
             {module.image_brief}
           </div>
-          <div className="mt-4 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-            {extractOverlayText(module.image_brief) ?? "Overlay text preview"}
+          <div className="mt-3 inline-flex max-w-full rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white">
+            <span className="truncate">
+              {extractOverlayText(module.image_brief) ?? "Overlay text preview"}
+            </span>
           </div>
         </div>
 
         <div>
-          <h5 className="text-xl font-semibold text-slate-950">{module.headline}</h5>
-          <p className="mt-3 text-sm leading-7 text-slate-600">{module.body}</p>
+          <h5 className="text-lg font-semibold leading-snug text-slate-950">{module.headline}</h5>
+          <p className="mt-2 text-[13px] leading-6 text-slate-600">{module.body}</p>
           {module.bullets.length > 0 ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {module.bullets.map((bullet) => (
                 <div
                   key={bullet}
-                  className="rounded-[1rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700"
+                  className="rounded-[0.9rem] border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12px] leading-5 text-slate-700"
                 >
                   {bullet}
                 </div>
