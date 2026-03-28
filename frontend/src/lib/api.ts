@@ -65,6 +65,7 @@ export type ProductListItem = {
   asin: string;
   title: string;
   brand: string | null;
+  source: string;
   marketplace_id: string;
   price_amount: string | null;
   price_currency: string | null;
@@ -82,6 +83,23 @@ export type ProductMutationResponse = {
   status: string;
   message: string;
   updated_at: string;
+};
+
+export type CatalogImportJob = {
+  id: string;
+  status: string;
+  source: string;
+  marketplace_id: string;
+  created_count: number;
+  updated_count: number;
+  skipped_count: number;
+  error_count: number;
+  processed_count: number;
+  total_expected: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  created_at: string;
 };
 
 export type InventoryItem = {
@@ -186,6 +204,25 @@ export async function getDashboardSummary(token: string): Promise<DashboardSumma
 
 export async function getProducts(token: string): Promise<ProductListResponse> {
   return apiRequest<ProductListResponse>("/products", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function createCatalogImportJob(token: string): Promise<CatalogImportJob> {
+  return apiRequest<CatalogImportJob>("/products/import", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function getLatestCatalogImportJob(
+  token: string,
+): Promise<CatalogImportJob | null> {
+  return apiRequest<CatalogImportJob | null>("/products/import-jobs/latest", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
