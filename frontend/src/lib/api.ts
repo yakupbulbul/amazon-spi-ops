@@ -161,6 +161,21 @@ export type AplusDraftPayload = {
 
 export type AplusLanguage = "de-DE" | "en-US" | "en-GB" | "fr-FR" | "it-IT" | "es-ES";
 
+export type AplusReadinessIssue = {
+  level: "error" | "warning";
+  code: string;
+  message: string;
+  field_label: string | null;
+};
+
+export type AplusReadinessReport = {
+  checked_payload: "draft" | "validated";
+  is_publish_ready: boolean;
+  blocking_errors: AplusReadinessIssue[];
+  warnings: AplusReadinessIssue[];
+  missing_sections: string[];
+};
+
 export type AplusDraftResponse = {
   id: string;
   product_id: string;
@@ -176,6 +191,7 @@ export type AplusDraftResponse = {
   auto_translate: boolean;
   draft_payload: AplusDraftPayload;
   validated_payload: AplusDraftPayload | null;
+  readiness_report: AplusReadinessReport;
   created_at: string;
   updated_at: string;
 };
