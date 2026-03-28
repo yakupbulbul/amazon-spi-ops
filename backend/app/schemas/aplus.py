@@ -70,6 +70,22 @@ class AplusPublishRequest(BaseModel):
     draft_id: str
 
 
+class AplusAssetResponse(BaseModel):
+    id: str
+    product_id: str | None
+    asset_scope: Literal["product", "brand", "logo", "generated"]
+    label: str | None
+    file_name: str
+    mime_type: str
+    file_size_bytes: int
+    public_url: str
+    created_at: datetime
+
+
+class AplusAssetListResponse(BaseModel):
+    items: list[AplusAssetResponse]
+
+
 class AplusDraftResponse(BaseModel):
     id: str
     product_id: str

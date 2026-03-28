@@ -58,6 +58,9 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     aplus_drafts: Mapped[list["AplusDraft"]] = relationship(
         back_populates="product", passive_deletes=True
     )
+    aplus_assets: Mapped[list["AplusAsset"]] = relationship(
+        back_populates="product", passive_deletes=True
+    )
     price_change_logs: Mapped[list["PriceChangeLog"]] = relationship(
         back_populates="product", passive_deletes=True
     )
@@ -141,6 +144,28 @@ class AplusPublishJob(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     draft: Mapped[AplusDraft] = relationship(back_populates="publish_jobs")
+
+
+class AplusAsset(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "aplus_assets"
+
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), index=True
+    )
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    asset_scope: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str | None] = mapped_column(String(255))
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    public_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    asset_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    product: Mapped[Product | None] = relationship(back_populates="aplus_assets")
+    created_by: Mapped[User | None] = relationship()
 
 
 class PriceChangeLog(UUIDPrimaryKeyMixin, Base):
