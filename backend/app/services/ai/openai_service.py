@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import json
 from typing import Any
 
 import httpx
 
 from app.core.config import Settings, settings
 from app.schemas.aplus import AplusDraftPayload
-from app.services.ai.prompt_templates import APLUS_SYSTEM_PROMPT, build_aplus_user_prompt
+from app.services.ai.prompt_templates import (
+    APLUS_SYSTEM_PROMPT,
+    build_aplus_translation_prompt,
+    build_aplus_user_prompt,
+)
 
 
 class OpenAiAplusService:
@@ -20,12 +25,14 @@ class OpenAiAplusService:
         product_context: dict[str, Any],
         brand_tone: str | None,
         positioning: str | None,
+        source_language: str,
     ) -> AplusDraftPayload:
         if not self.settings.openai_api_key:
             return self._mock_draft(
                 product_context=product_context,
                 brand_tone=brand_tone,
                 positioning=positioning,
+                source_language=source_language,
             )
 
         payload = {
@@ -39,6 +46,7 @@ class OpenAiAplusService:
                         product_summary=self._format_product_summary(product_context),
                         brand_tone=brand_tone,
                         positioning=positioning,
+                        language=source_language,
                     ),
                 },
             ],
@@ -77,6 +85,68 @@ class OpenAiAplusService:
 
         return AplusDraftPayload.model_validate_json(content)
 
+    def translate_aplus_draft(
+        self,
+        *,
+        draft_payload: AplusDraftPayload,
+        source_language: str,
+        target_language: str,
+    ) -> AplusDraftPayload:
+        if source_language == target_language:
+            raise ValueError("Source and target language must be different when translation is enabled.")
+
+        if not self.settings.openai_api_key:
+            return self._mock_translate_draft(draft_payload=draft_payload, target_language=target_language)
+
+        payload = {
+            "model": self.settings.openai_model,
+            "temperature": 0.2,
+            "messages": [
+                {"role": "system", "content": APLUS_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": build_aplus_translation_prompt(
+                        source_language=source_language,
+                        target_language=target_language,
+                        draft_payload=draft_payload.model_dump_json(indent=2),
+                    ),
+                },
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "amazon_aplus_translation",
+                    "strict": True,
+                    "schema": AplusDraftPayload.model_json_schema(),
+                },
+            },
+        }
+
+        with httpx.Client(timeout=90) as client:
+            response = client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.settings.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise ValueError(
+                    "OpenAI translation request failed: "
+                    f"{response.status_code} {response.text}"
+                ) from exc
+
+        body = response.json()
+        message = body["choices"][0]["message"]
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("OpenAI did not return translated A+ draft content.")
+
+        return AplusDraftPayload.model_validate_json(content)
+
     @staticmethod
     def _format_product_summary(product_context: dict[str, Any]) -> str:
         lines = []
@@ -107,6 +177,7 @@ class OpenAiAplusService:
         product_context: dict[str, Any],
         brand_tone: str | None,
         positioning: str | None,
+        source_language: str,
     ) -> AplusDraftPayload:
         title = str(product_context.get("title") or "Amazon product")
         brand = str(product_context.get("brand") or "Brand")
@@ -122,7 +193,7 @@ class OpenAiAplusService:
         position = positioning or "practical everyday use"
 
         return AplusDraftPayload(
-            headline=f"{brand} presentation for {title}",
+            headline=f"{brand} presentation for {title} ({source_language})",
             subheadline=f"Structured A+ storytelling for {sku} with a {tone} tone.",
             brand_story=(
                 f"{brand} positions {title} around {position}, focusing on concrete product details "
@@ -180,3 +251,32 @@ class OpenAiAplusService:
                 "Replace image briefs with approved asset references during final editorial review.",
             ],
         )
+
+    @staticmethod
+    def _mock_translate_draft(
+        *,
+        draft_payload: AplusDraftPayload,
+        target_language: str,
+    ) -> AplusDraftPayload:
+        payload = draft_payload.model_dump(mode="json")
+
+        def translate_text(value: Any) -> Any:
+            if isinstance(value, str):
+                return f"{value} ({target_language})"
+            if isinstance(value, list):
+                return [translate_text(item) for item in value]
+            if isinstance(value, dict):
+                translated: dict[str, Any] = {}
+                for key, nested_value in value.items():
+                    if key == "module_type":
+                        translated[key] = nested_value
+                    else:
+                        translated[key] = translate_text(nested_value)
+                return translated
+            return value
+
+        translated_payload = json.loads(json.dumps(payload))
+        for key in ["headline", "subheadline", "brand_story", "key_features", "modules", "compliance_notes"]:
+            translated_payload[key] = translate_text(translated_payload[key])
+
+        return AplusDraftPayload.model_validate(translated_payload)

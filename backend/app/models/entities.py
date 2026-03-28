@@ -111,6 +111,9 @@ class AplusDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default=DraftStatus.DRAFT.value, nullable=False)
     brand_tone: Mapped[str | None] = mapped_column(String(255))
     positioning: Mapped[str | None] = mapped_column(String(512))
+    source_language: Mapped[str] = mapped_column(String(16), default="de-DE", nullable=False)
+    target_language: Mapped[str] = mapped_column(String(16), default="de-DE", nullable=False)
+    auto_translate: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     draft_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     validated_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
