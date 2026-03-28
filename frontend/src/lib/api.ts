@@ -77,6 +77,46 @@ export type ProductListResponse = {
   items: ProductListItem[];
 };
 
+export type InventoryItem = {
+  product_id: string;
+  sku: string;
+  asin: string;
+  product_name: string;
+  marketplace_id: string;
+  available_quantity: number;
+  reserved_quantity: number;
+  inbound_quantity: number;
+  low_stock_threshold: number;
+  alert_status: string;
+  captured_at: string | null;
+};
+
+export type InventoryListResponse = {
+  items: InventoryItem[];
+};
+
+export type InventoryAlertItem = {
+  product_id: string;
+  sku: string;
+  product_name: string;
+  severity: string;
+  message: string;
+  available_quantity: number;
+  low_stock_threshold: number;
+  created_at: string;
+};
+
+export type InventoryAlertListResponse = {
+  items: InventoryAlertItem[];
+};
+
+export type InventorySyncResponse = {
+  status: string;
+  source: string;
+  synced_count: number;
+  synced_at: string;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function apiRequest<T>(
@@ -139,6 +179,31 @@ export async function getDashboardSummary(token: string): Promise<DashboardSumma
 
 export async function getProducts(token: string): Promise<ProductListResponse> {
   return apiRequest<ProductListResponse>("/products", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function getInventory(token: string): Promise<InventoryListResponse> {
+  return apiRequest<InventoryListResponse>("/inventory", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function getInventoryAlerts(token: string): Promise<InventoryAlertListResponse> {
+  return apiRequest<InventoryAlertListResponse>("/inventory/alerts", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function syncInventory(token: string): Promise<InventorySyncResponse> {
+  return apiRequest<InventorySyncResponse>("/inventory/sync", {
+    method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
     },

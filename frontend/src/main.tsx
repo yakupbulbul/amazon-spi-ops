@@ -6,6 +6,7 @@ import { App } from "./App";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { DashboardPage } from "./pages/DashboardPage";
+import { InventoryPage } from "./pages/InventoryPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { SectionPage } from "./pages/SectionPage";
@@ -44,17 +45,7 @@ const router = createBrowserRouter([
               },
               {
                 path: "inventory",
-                element: (
-                  <SectionPage
-                    eyebrow="Inventory operations"
-                    title="Inventory"
-                    description="This screen will become the monitoring surface for stock levels, low-stock alerts, sync jobs, and manual refresh actions."
-                    bullets={[
-                      "Reserved for SKU, ASIN, quantity, and health badge tables.",
-                      "Reserved for low-stock threshold alerts and scheduled sync visibility.",
-                    ]}
-                  />
-                ),
+                element: <InventoryPage />,
               },
               {
                 path: "notifications",
