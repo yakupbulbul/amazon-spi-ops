@@ -13,6 +13,7 @@ from app.models.entities import InventoryAlert, InventorySnapshot, Product, User
 from app.models.enums import AlertSeverity, InventoryAlertStatus, UserRole
 
 logger = logging.getLogger(__name__)
+SAMPLE_SKUS = {"TRAVEL-MUG-20OZ", "STANDING-DESK-MAT", "LED-DESK-LAMP"}
 
 
 def bootstrap_admin_user() -> None:
@@ -46,7 +47,7 @@ def bootstrap_sample_catalog() -> None:
                 asin="B0AMZNSKU01",
                 title="Insulated Travel Mug 20oz",
                 brand="Northstar Goods",
-                marketplace_id="ATVPDKIKX0DER",
+                marketplace_id=settings.marketplace_id,
                 price_amount=Decimal("24.99"),
                 price_currency="USD",
                 low_stock_threshold=18,
@@ -57,7 +58,7 @@ def bootstrap_sample_catalog() -> None:
                 asin="B0AMZNSKU02",
                 title="Ergonomic Standing Desk Mat",
                 brand="Northstar Goods",
-                marketplace_id="ATVPDKIKX0DER",
+                marketplace_id=settings.marketplace_id,
                 price_amount=Decimal("49.00"),
                 price_currency="USD",
                 low_stock_threshold=12,
@@ -68,7 +69,7 @@ def bootstrap_sample_catalog() -> None:
                 asin="B0AMZNSKU03",
                 title="Adjustable LED Desk Lamp",
                 brand="Northstar Goods",
-                marketplace_id="ATVPDKIKX0DER",
+                marketplace_id=settings.marketplace_id,
                 price_amount=Decimal("39.50"),
                 price_currency="USD",
                 low_stock_threshold=10,
@@ -127,3 +128,26 @@ def bootstrap_sample_catalog() -> None:
         )
         session.commit()
         logger.info("Bootstrapped sample catalog data for local development")
+
+
+def align_sample_catalog_marketplace() -> None:
+    with SessionLocal() as session:
+        sample_products = (
+            session.execute(select(Product).where(Product.sku.in_(SAMPLE_SKUS)).order_by(Product.title.asc()))
+            .scalars()
+            .all()
+        )
+        if not sample_products:
+            return
+
+        changed = False
+        for product in sample_products:
+            if product.marketplace_id != settings.marketplace_id:
+                product.marketplace_id = settings.marketplace_id
+                changed = True
+
+        if not changed:
+            return
+
+        session.commit()
+        logger.info("Aligned sample catalog marketplace to %s", settings.marketplace_id)
