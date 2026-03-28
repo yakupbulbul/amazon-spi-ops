@@ -1,0 +1,154 @@
+import {
+  ChevronDown,
+  ChevronUp,
+  LayoutTemplate,
+  Plus,
+  Trash2,
+} from "lucide-react";
+
+import type { AplusModulePayload } from "../../lib/api";
+
+type AplusModuleEditorCardProps = {
+  index: number;
+  module: AplusModulePayload;
+  isExpanded: boolean;
+  canRemove: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+  onUpdate: (patch: Partial<AplusModulePayload>) => void;
+  moduleLabels: Record<AplusModulePayload["module_type"], string>;
+};
+
+export function AplusModuleEditorCard({
+  index,
+  module,
+  isExpanded,
+  canRemove,
+  onToggle,
+  onRemove,
+  onUpdate,
+  moduleLabels,
+}: AplusModuleEditorCardProps) {
+  return (
+    <article className="rounded-[1.5rem] bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs uppercase tracking-[0.22em] text-slate-400">
+              Module {index + 1}
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100">
+              <LayoutTemplate className="h-3.5 w-3.5" />
+              {moduleLabels[module.module_type]}
+            </span>
+          </div>
+          <p className="mt-3 text-sm font-medium text-white">{module.headline || "Untitled module"}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {module.body.slice(0, 120)}
+            {module.body.length > 120 ? "..." : ""}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/[0.06]"
+          >
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {isExpanded ? "Collapse" : "Expand"}
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={!canRemove}
+            className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Trash2 className="h-4 w-4" />
+            Remove
+          </button>
+        </div>
+      </div>
+
+      {isExpanded ? (
+        <div className="mt-5 space-y-5 border-t border-white/10 pt-5">
+          <div className="grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
+            <label className="block space-y-2">
+              <span className="text-sm text-slate-300">Module type</span>
+              <select
+                value={module.module_type}
+                onChange={(event) =>
+                  onUpdate({
+                    module_type: event.target.value as AplusModulePayload["module_type"],
+                  })
+                }
+                className="w-full rounded-[1.1rem] border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none"
+              >
+                {Object.entries(moduleLabels).map(([value, label]) => (
+                  <option key={value} value={value} className="bg-slate-950">
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm text-slate-300">Headline</span>
+              <input
+                type="text"
+                value={module.headline}
+                onChange={(event) => onUpdate({ headline: event.target.value })}
+                className="w-full rounded-[1.1rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+              />
+            </label>
+          </div>
+
+          <label className="block space-y-2">
+            <span className="text-sm text-slate-300">Body</span>
+            <textarea
+              value={module.body}
+              onChange={(event) => onUpdate({ body: event.target.value })}
+              rows={5}
+              className="w-full rounded-[1.1rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-white outline-none"
+            />
+          </label>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <label className="block space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-slate-300">Bullets</span>
+                <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                  <Plus className="h-3.5 w-3.5" />
+                  One line per bullet
+                </span>
+              </div>
+              <textarea
+                value={module.bullets.join("\n")}
+                onChange={(event) =>
+                  onUpdate({
+                    bullets: event.target.value
+                      .split("\n")
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  })
+                }
+                rows={4}
+                className="w-full rounded-[1.1rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-white outline-none"
+              />
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-sm text-slate-300">Image brief</span>
+              <textarea
+                value={module.image_brief}
+                onChange={(event) => onUpdate({ image_brief: event.target.value })}
+                rows={4}
+                className="w-full rounded-[1.1rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-white outline-none"
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
+    </article>
+  );
+}

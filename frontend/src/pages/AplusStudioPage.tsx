@@ -4,12 +4,13 @@ import {
   FileJson2,
   FilePenLine,
   Lightbulb,
+  LoaderCircle,
   Plus,
   Sparkles,
-  Trash2,
 } from "lucide-react";
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 
+import { AplusModuleEditorCard } from "../components/aplus/AplusModuleEditorCard";
 import { DraftMetadataBar } from "../components/aplus/DraftMetadataBar";
 import { LanguageSelector } from "../components/aplus/LanguageSelector";
 import { ProductCombobox } from "../components/aplus/ProductCombobox";
@@ -122,6 +123,7 @@ export function AplusStudioPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [expandedModules, setExpandedModules] = useState<number[]>([0]);
 
   const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? null;
   const selectedProduct =
@@ -215,6 +217,7 @@ export function AplusStudioPage() {
     setTargetLanguage(draft.target_language);
     setAutoTranslate(draft.auto_translate);
     setEditorDraft(getEditablePayload(draft));
+    setExpandedModules([0]);
     setPublishResult(null);
     setError(null);
   }
@@ -321,6 +324,7 @@ export function AplusStudioPage() {
     setPublishResult(null);
     const nextProduct = products.find((product) => product.id === productId) ?? null;
     setEditorDraft(buildEmptyDraft(nextProduct));
+    setExpandedModules([0]);
   }
 
   function handleSourceLanguageChange(nextLanguage: AplusLanguage) {
@@ -368,6 +372,7 @@ export function AplusStudioPage() {
   }
 
   function addModule() {
+    const nextModuleIndex = editorDraft?.modules.length ?? 0;
     setEditorDraft((currentDraft) => {
       if (!currentDraft || currentDraft.modules.length >= 5) {
         return currentDraft;
@@ -387,6 +392,7 @@ export function AplusStudioPage() {
         ],
       };
     });
+    setExpandedModules((current) => [...new Set([...current, nextModuleIndex])]);
   }
 
   function removeModule(index: number) {
@@ -400,6 +406,17 @@ export function AplusStudioPage() {
         modules: currentDraft.modules.filter((_, moduleIndex) => moduleIndex !== index),
       };
     });
+    setExpandedModules((current) =>
+      current
+        .filter((moduleIndex) => moduleIndex !== index)
+        .map((moduleIndex) => (moduleIndex > index ? moduleIndex - 1 : moduleIndex)),
+    );
+  }
+
+  function toggleModule(index: number) {
+    setExpandedModules((current) =>
+      current.includes(index) ? current.filter((item) => item !== index) : [...current, index],
+    );
   }
 
   return (
@@ -706,69 +723,107 @@ export function AplusStudioPage() {
                 Generate a draft or select an existing draft to start editing the A+ payload.
               </div>
             ) : (
-              <div className="mt-6 space-y-6">
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <label className="block space-y-2">
-                    <span className="text-sm text-slate-300">Headline</span>
-                    <input
-                      type="text"
-                      value={editorDraft.headline}
-                      onChange={(event) =>
-                        setEditorDraft((currentDraft) =>
-                          currentDraft
-                            ? {
-                                ...currentDraft,
-                                headline: event.target.value,
-                              }
-                            : currentDraft,
-                        )
-                      }
-                      className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
-                    />
-                  </label>
+              <div className="mt-6 space-y-8">
+                {(isGenerating || isValidating || isPublishing) ? (
+                  <div className="flex items-center gap-3 rounded-[1.25rem] bg-white/[0.03] px-4 py-3 text-sm text-slate-300">
+                    <LoaderCircle className="h-4 w-4 animate-spin text-sky-200" />
+                    <span>
+                      {isGenerating
+                        ? autoTranslate
+                          ? "Generating and translating structured A+ content..."
+                          : "Generating structured A+ content..."
+                        : isValidating
+                          ? "Validating structured draft..."
+                          : "Preparing Amazon-compatible publish payload..."}
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-white">Core message</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Keep the opening proposition concise and easy to scan in a module-based layout.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <label className="block space-y-2">
+                      <span className="text-sm text-slate-300">Headline</span>
+                      <p className="text-xs text-slate-500">Short, primary value proposition.</p>
+                      <input
+                        type="text"
+                        value={editorDraft.headline}
+                        onChange={(event) =>
+                          setEditorDraft((currentDraft) =>
+                            currentDraft
+                              ? {
+                                  ...currentDraft,
+                                  headline: event.target.value,
+                                }
+                              : currentDraft,
+                          )
+                        }
+                        className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base font-medium text-white outline-none"
+                      />
+                    </label>
+
+                    <label className="block space-y-2">
+                      <span className="text-sm text-slate-300">Subheadline</span>
+                      <p className="text-xs text-slate-500">Support the main promise with one clear clarifier.</p>
+                      <input
+                        type="text"
+                        value={editorDraft.subheadline}
+                        onChange={(event) =>
+                          setEditorDraft((currentDraft) =>
+                            currentDraft
+                              ? {
+                                  ...currentDraft,
+                                  subheadline: event.target.value,
+                                }
+                              : currentDraft,
+                          )
+                        }
+                        className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base text-white outline-none"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-white">Brand story</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Focus on differentiation, audience fit, and trust signals instead of generic claims.
+                    </p>
+                  </div>
 
                   <label className="block space-y-2">
-                    <span className="text-sm text-slate-300">Subheadline</span>
-                    <input
-                      type="text"
-                      value={editorDraft.subheadline}
+                    <span className="text-sm text-slate-300">Brand story</span>
+                    <textarea
+                      value={editorDraft.brand_story}
                       onChange={(event) =>
                         setEditorDraft((currentDraft) =>
                           currentDraft
                             ? {
                                 ...currentDraft,
-                                subheadline: event.target.value,
+                                brand_story: event.target.value,
                               }
                             : currentDraft,
                         )
                       }
-                      className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+                      rows={6}
+                      className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-white outline-none"
                     />
                   </label>
                 </div>
 
-                <label className="block space-y-2">
-                  <span className="text-sm text-slate-300">Brand story</span>
-                  <textarea
-                    value={editorDraft.brand_story}
-                    onChange={(event) =>
-                      setEditorDraft((currentDraft) =>
-                        currentDraft
-                          ? {
-                              ...currentDraft,
-                              brand_story: event.target.value,
-                            }
-                          : currentDraft,
-                      )
-                    }
-                    rows={5}
-                    className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-6 text-white outline-none"
-                  />
-                </label>
-
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <label className="block space-y-2">
-                    <span className="text-sm text-slate-300">Key features</span>
+                <div className="grid gap-5 xl:grid-cols-2">
+                  <label className="block space-y-2 rounded-[1.5rem] bg-white/[0.03] p-4">
+                    <span className="text-sm font-medium text-white">Key features</span>
+                    <p className="text-xs leading-5 text-slate-500">
+                      One benefit-led point per line. These will be visible to editors and reused across modules.
+                    </p>
                     <textarea
                       value={joinLines(editorDraft.key_features)}
                       onChange={(event) =>
@@ -782,12 +837,15 @@ export function AplusStudioPage() {
                         )
                       }
                       rows={6}
-                      className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 font-mono text-sm leading-6 text-white outline-none"
+                      className="w-full rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-7 text-white outline-none"
                     />
                   </label>
 
-                  <label className="block space-y-2">
-                    <span className="text-sm text-slate-300">Compliance notes</span>
+                  <label className="block space-y-2 rounded-[1.5rem] bg-white/[0.03] p-4">
+                    <span className="text-sm font-medium text-white">Compliance notes</span>
+                    <p className="text-xs leading-5 text-slate-500">
+                      Flag claims, references, or creative assumptions that need human review before publish.
+                    </p>
                     <textarea
                       value={joinLines(editorDraft.compliance_notes)}
                       onChange={(event) =>
@@ -801,7 +859,7 @@ export function AplusStudioPage() {
                         )
                       }
                       rows={6}
-                      className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 font-mono text-sm leading-6 text-white outline-none"
+                      className="w-full rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-7 text-white outline-none"
                     />
                   </label>
                 </div>
@@ -810,106 +868,39 @@ export function AplusStudioPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium text-white">Content modules</p>
-                      <p className="mt-1 text-sm text-slate-400">
-                        Keep between 3 and 5 modules to satisfy the current backend validation rules.
+                      <p className="mt-1 text-sm text-slate-500">
+                        Expand a module to edit its structure, or collapse it to scan the overall draft more quickly.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={addModule}
-                      disabled={editorDraft.modules.length >= 5}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add module
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300">
+                        {editorDraft.modules.length} modules
+                      </span>
+                      <button
+                        type="button"
+                        onClick={addModule}
+                        disabled={editorDraft.modules.length >= 5}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add module
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
                     {editorDraft.modules.map((module, index) => (
-                      <article
+                      <AplusModuleEditorCard
                         key={`${module.module_type}-${index}`}
-                        className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs uppercase tracking-[0.22em] text-slate-400">
-                              Module {index + 1}
-                            </span>
-                            <select
-                              value={module.module_type}
-                              onChange={(event) =>
-                                updateModule(index, {
-                                  module_type: event.target.value as AplusModulePayload["module_type"],
-                                })
-                              }
-                              className="rounded-full border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none"
-                            >
-                              {Object.entries(moduleLabels).map(([value, label]) => (
-                                <option key={value} value={value} className="bg-slate-950">
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => removeModule(index)}
-                            disabled={editorDraft.modules.length <= 3}
-                            className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Remove
-                          </button>
-                        </div>
-
-                        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                          <label className="block space-y-2 lg:col-span-2">
-                            <span className="text-sm text-slate-300">Headline</span>
-                            <input
-                              type="text"
-                              value={module.headline}
-                              onChange={(event) => updateModule(index, { headline: event.target.value })}
-                              className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
-                            />
-                          </label>
-
-                          <label className="block space-y-2 lg:col-span-2">
-                            <span className="text-sm text-slate-300">Body</span>
-                            <textarea
-                              value={module.body}
-                              onChange={(event) => updateModule(index, { body: event.target.value })}
-                              rows={4}
-                              className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-6 text-white outline-none"
-                            />
-                          </label>
-
-                          <label className="block space-y-2">
-                            <span className="text-sm text-slate-300">Bullets</span>
-                            <textarea
-                              value={joinLines(module.bullets)}
-                              onChange={(event) =>
-                                updateModule(index, { bullets: parseLines(event.target.value) })
-                              }
-                              rows={4}
-                              className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 font-mono text-sm leading-6 text-white outline-none"
-                            />
-                          </label>
-
-                          <label className="block space-y-2">
-                            <span className="text-sm text-slate-300">Image brief</span>
-                            <textarea
-                              value={module.image_brief}
-                              onChange={(event) =>
-                                updateModule(index, { image_brief: event.target.value })
-                              }
-                              rows={4}
-                              className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-6 text-white outline-none"
-                            />
-                          </label>
-                        </div>
-                      </article>
+                        index={index}
+                        module={module}
+                        isExpanded={expandedModules.includes(index)}
+                        canRemove={editorDraft.modules.length > 3}
+                        onToggle={() => toggleModule(index)}
+                        onRemove={() => removeModule(index)}
+                        onUpdate={(patch) => updateModule(index, patch)}
+                        moduleLabels={moduleLabels}
+                      />
                     ))}
                   </div>
                 </div>
