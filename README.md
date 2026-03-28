@@ -29,6 +29,7 @@ cp .env.example .env
 
 Supported variables:
 
+- `NGINX_PORT`
 - `LWA_CLIENT_ID`
 - `LWA_CLIENT_SECRET`
 - `AWS_ACCESS_KEY_ID`
@@ -122,6 +123,9 @@ Services defined in Compose:
 - `worker`
 - `frontend`
 - `nginx`
+
+By default, Nginx is published on `http://localhost:8080`. Override `NGINX_PORT` in `.env` if you
+need a different host port.
 
 ## Verification Notes
 
