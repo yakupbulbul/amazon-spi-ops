@@ -49,11 +49,21 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     low_stock_threshold: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    inventory_snapshots: Mapped[list["InventorySnapshot"]] = relationship(back_populates="product")
-    inventory_alerts: Mapped[list["InventoryAlert"]] = relationship(back_populates="product")
-    aplus_drafts: Mapped[list["AplusDraft"]] = relationship(back_populates="product")
-    price_change_logs: Mapped[list["PriceChangeLog"]] = relationship(back_populates="product")
-    stock_change_logs: Mapped[list["StockChangeLog"]] = relationship(back_populates="product")
+    inventory_snapshots: Mapped[list["InventorySnapshot"]] = relationship(
+        back_populates="product", passive_deletes=True
+    )
+    inventory_alerts: Mapped[list["InventoryAlert"]] = relationship(
+        back_populates="product", passive_deletes=True
+    )
+    aplus_drafts: Mapped[list["AplusDraft"]] = relationship(
+        back_populates="product", passive_deletes=True
+    )
+    price_change_logs: Mapped[list["PriceChangeLog"]] = relationship(
+        back_populates="product", passive_deletes=True
+    )
+    stock_change_logs: Mapped[list["StockChangeLog"]] = relationship(
+        back_populates="product", passive_deletes=True
+    )
 
 
 class InventorySnapshot(UUIDPrimaryKeyMixin, Base):
@@ -109,7 +119,9 @@ class AplusDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     product: Mapped[Product] = relationship(back_populates="aplus_drafts")
     created_by: Mapped[User | None] = relationship()
-    publish_jobs: Mapped[list["AplusPublishJob"]] = relationship(back_populates="draft")
+    publish_jobs: Mapped[list["AplusPublishJob"]] = relationship(
+        back_populates="draft", passive_deletes=True
+    )
 
 
 class AplusPublishJob(UUIDPrimaryKeyMixin, Base):

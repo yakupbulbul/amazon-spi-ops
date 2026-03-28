@@ -61,7 +61,7 @@ class CatalogImportService:
         if job is None:
             raise ValueError("Catalog import job not found.")
 
-        if job.status == CatalogImportStatus.RUNNING.value:
+        if job.status != CatalogImportStatus.PENDING.value:
             return
 
         imported_listing_count = 0
@@ -73,12 +73,18 @@ class CatalogImportService:
 
         try:
             next_token: str | None = None
+            seen_tokens: set[str] = set()
 
             while True:
+                if next_token:
+                    if next_token in seen_tokens:
+                        raise ValueError("Amazon listings pagination repeated a token before completion.")
+                    seen_tokens.add(next_token)
+
                 payload = self.amazon_service.search_listings_items(
                     marketplace_id=job.marketplace_id,
                     next_token=next_token,
-                    page_size=50,
+                    page_size=20,
                 )
                 total_expected = payload.get("numberOfResults")
                 if isinstance(total_expected, int):
@@ -112,7 +118,7 @@ class CatalogImportService:
             if job is not None:
                 job.status = CatalogImportStatus.FAILED.value
                 job.completed_at = self._now()
-                job.error_message = str(exc)
+                job.error_message = self._format_error_message(exc)
                 self.db_session.commit()
             raise
 
@@ -267,3 +273,7 @@ class CatalogImportService:
     @staticmethod
     def _now() -> datetime:
         return datetime.now(UTC)
+
+    @staticmethod
+    def _format_error_message(exc: Exception) -> str:
+        return str(exc).strip()[:1000]
