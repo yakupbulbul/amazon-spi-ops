@@ -35,6 +35,12 @@ const healthBadgeStyles: Record<string, string> = {
   out_of_stock: "border-rose-400/20 bg-rose-500/10 text-rose-100",
 };
 
+const marketplaceCurrencyDefaults: Record<string, string> = {
+  A1PA6795UKMFR9: "EUR",
+  A1F83G8C2ARO7P: "GBP",
+  ATVPDKIKX0DER: "USD",
+};
+
 function formatCurrency(amount: string | null, currency: string | null): string {
   if (!amount || !currency) {
     return "Unavailable";
@@ -71,6 +77,10 @@ function formatTimestamp(value: string | null): string {
   }).format(new Date(value));
 }
 
+function getDefaultCurrency(product: ProductListItem): string {
+  return product.price_currency ?? marketplaceCurrencyDefaults[product.marketplace_id] ?? "USD";
+}
+
 type MutationDialogState =
   | {
       type: "price";
@@ -91,6 +101,7 @@ export function ProductsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mutationMessage, setMutationMessage] = useState<string | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const [dialogState, setDialogState] = useState<MutationDialogState | null>(null);
   const [priceInput, setPriceInput] = useState("");
   const [currencyInput, setCurrencyInput] = useState("USD");
@@ -215,13 +226,15 @@ export function ProductsPage() {
 
   function openPriceDialog(product: ProductListItem) {
     setMutationMessage(null);
+    setDialogError(null);
     setDialogState({ type: "price", product });
     setPriceInput(product.price_amount ?? "");
-    setCurrencyInput(product.price_currency ?? "USD");
+    setCurrencyInput(getDefaultCurrency(product));
   }
 
   function openStockDialog(product: ProductListItem) {
     setMutationMessage(null);
+    setDialogError(null);
     setDialogState({ type: "stock", product });
     setStockInput(String(product.inventory?.available_quantity ?? 0));
   }
@@ -231,6 +244,7 @@ export function ProductsPage() {
       return;
     }
     setDialogState(null);
+    setDialogError(null);
     setPriceInput("");
     setCurrencyInput("USD");
     setStockInput("");
@@ -264,16 +278,32 @@ export function ProductsPage() {
 
     setIsMutating(true);
     setError(null);
+    setDialogError(null);
     setMutationMessage(null);
 
     try {
       if (dialogState.type === "price") {
-        if (!priceInput || Number(priceInput) <= 0) {
+        const normalizedAmount = Number(priceInput);
+        const normalizedCurrency = currencyInput.trim().toUpperCase();
+
+        if (!priceInput || Number.isNaN(normalizedAmount) || normalizedAmount <= 0) {
           throw new Error("Price must be greater than zero.");
         }
+        if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
+          throw new Error("Currency must be a 3-letter ISO code such as EUR or USD.");
+        }
+        if (
+          dialogState.product.price_amount === priceInput &&
+          dialogState.product.price_currency === normalizedCurrency
+        ) {
+          setMutationMessage(`No price change was applied for ${dialogState.product.sku}.`);
+          setDialogState(null);
+          return;
+        }
+
         const response = await updateProductPrice(token, dialogState.product.id, {
           price_amount: priceInput,
-          price_currency: currencyInput.toUpperCase(),
+          price_currency: normalizedCurrency,
         });
         await loadProducts();
         setMutationMessage(response.message);
@@ -282,6 +312,12 @@ export function ProductsPage() {
         if (!Number.isInteger(parsedQuantity) || parsedQuantity < 0) {
           throw new Error("Quantity must be a whole number greater than or equal to zero.");
         }
+        if ((dialogState.product.inventory?.available_quantity ?? 0) === parsedQuantity) {
+          setMutationMessage(`No stock change was applied for ${dialogState.product.sku}.`);
+          setDialogState(null);
+          return;
+        }
+
         const response = await updateProductStock(token, dialogState.product.id, {
           quantity: parsedQuantity,
         });
@@ -291,7 +327,9 @@ export function ProductsPage() {
 
       setDialogState(null);
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "Unable to update product.");
+      setDialogError(
+        mutationError instanceof Error ? mutationError.message : "Unable to update product.",
+      );
     } finally {
       setIsMutating(false);
     }
@@ -567,66 +605,90 @@ export function ProductsPage() {
               </button>
             </div>
 
-            <div className="mt-6 space-y-5">
-              {dialogState.type === "price" ? (
-                <>
+            <form
+              className="mt-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitMutation();
+              }}
+            >
+              <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-300">
+                {dialogState.type === "price"
+                  ? `Current price: ${formatCurrency(dialogState.product.price_amount, dialogState.product.price_currency)}`
+                  : `Current available quantity: ${dialogState.product.inventory?.available_quantity ?? 0}`}
+              </div>
+
+              <div className="mt-6 space-y-5">
+                {dialogState.type === "price" ? (
+                  <>
+                    <label className="block space-y-2">
+                      <span className="text-sm text-slate-300">Price amount</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={priceInput}
+                        onChange={(event) => setPriceInput(event.target.value)}
+                        className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+                      />
+                    </label>
+                    <label className="block space-y-2">
+                      <span className="text-sm text-slate-300">Currency</span>
+                      <input
+                        type="text"
+                        value={currencyInput}
+                        onChange={(event) => setCurrencyInput(event.target.value)}
+                        maxLength={3}
+                        className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm uppercase text-white outline-none"
+                      />
+                      <p className="text-xs text-slate-500">
+                        Defaults from the product marketplace when no saved currency exists yet.
+                      </p>
+                    </label>
+                  </>
+                ) : (
                   <label className="block space-y-2">
-                    <span className="text-sm text-slate-300">Price amount</span>
+                    <span className="text-sm text-slate-300">Available quantity</span>
                     <input
                       type="number"
                       min="0"
-                      step="0.01"
-                      value={priceInput}
-                      onChange={(event) => setPriceInput(event.target.value)}
+                      step="1"
+                      value={stockInput}
+                      onChange={(event) => setStockInput(event.target.value)}
                       className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
                     />
                   </label>
-                  <label className="block space-y-2">
-                    <span className="text-sm text-slate-300">Currency</span>
-                    <input
-                      type="text"
-                      value={currencyInput}
-                      onChange={(event) => setCurrencyInput(event.target.value)}
-                      className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm uppercase text-white outline-none"
-                    />
-                  </label>
-                </>
-              ) : (
-                <label className="block space-y-2">
-                  <span className="text-sm text-slate-300">Available quantity</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={stockInput}
-                    onChange={(event) => setStockInput(event.target.value)}
-                    className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
-                  />
-                </label>
-              )}
-            </div>
+                )}
+              </div>
 
-            <div className="mt-6 rounded-[1.25rem] border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-              Confirming this action will send the mutation through the backend workflow immediately.
-            </div>
+              {dialogError ? (
+                <div className="mt-6 flex items-start gap-3 rounded-[1.25rem] border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{dialogError}</span>
+                </div>
+              ) : null}
 
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={closeDialog}
-                className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-200 transition hover:bg-white/[0.08]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void submitMutation()}
-                disabled={isMutating}
-                className="rounded-[1.25rem] bg-amber-300 px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isMutating ? "Applying..." : "Confirm update"}
-              </button>
-            </div>
+              <div className="mt-6 rounded-[1.25rem] border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                Confirming this action will send the mutation through the backend workflow immediately.
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeDialog}
+                  className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isMutating}
+                  className="rounded-[1.25rem] bg-amber-300 px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isMutating ? "Applying..." : "Confirm update"}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       ) : null}
