@@ -127,6 +127,9 @@ export function ProductsPage() {
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [latestImportJob, setLatestImportJob] = useState<CatalogImportJob | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [marketplaceFilter, setMarketplaceFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [healthFilter, setHealthFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -222,23 +225,38 @@ export function ProductsPage() {
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return products;
-    }
+    return products.filter((product) => {
+      const matchesQuery =
+        !normalizedQuery ||
+        [
+          product.title,
+          product.sku,
+          product.asin,
+          product.brand ?? "",
+          product.marketplace_id,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      const matchesMarketplace =
+        marketplaceFilter === "all" || product.marketplace_id === marketplaceFilter;
+      const matchesSource = sourceFilter === "all" || product.source === sourceFilter;
+      const matchesHealth =
+        healthFilter === "all" || (product.inventory?.alert_status ?? "critical") === healthFilter;
 
-    return products.filter((product) =>
-      [
-        product.title,
-        product.sku,
-        product.asin,
-        product.brand ?? "",
-        product.marketplace_id,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery),
-    );
-  }, [deferredSearchQuery, products]);
+      return matchesQuery && matchesMarketplace && matchesSource && matchesHealth;
+    });
+  }, [deferredSearchQuery, healthFilter, marketplaceFilter, products, sourceFilter]);
+
+  const marketplaceOptions = useMemo(
+    () => Array.from(new Set(products.map((product) => product.marketplace_id))).sort(),
+    [products],
+  );
+
+  const sourceOptions = useMemo(
+    () => Array.from(new Set(products.map((product) => product.source))).sort(),
+    [products],
+  );
 
   const lowStockCount = filteredProducts.filter((product) => {
     const availableQuantity = product.inventory?.available_quantity ?? 0;
@@ -472,16 +490,67 @@ export function ProductsPage() {
             <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Catalog query</p>
             <h3 className="mt-2 text-xl font-semibold text-white">Products</h3>
           </div>
-          <label className="flex w-full items-center gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 lg:max-w-md">
-            <Search className="h-4 w-4 text-slate-500" />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search by SKU, ASIN, brand, or title"
-              className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
-            />
-          </label>
+          <div className="flex w-full flex-col gap-3 xl:flex-row xl:justify-end">
+            <label className="flex w-full items-center gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 xl:max-w-md">
+              <Search className="h-4 w-4 text-slate-500" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search by SKU, ASIN, brand, or title"
+                className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+              />
+            </label>
+            <select
+              value={marketplaceFilter}
+              onChange={(event) => setMarketplaceFilter(event.target.value)}
+              className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+            >
+              <option value="all" className="bg-slate-950">
+                All marketplaces
+              </option>
+              {marketplaceOptions.map((marketplaceId) => (
+                <option key={marketplaceId} value={marketplaceId} className="bg-slate-950">
+                  {marketplaceId}
+                </option>
+              ))}
+            </select>
+            <select
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value)}
+              className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+            >
+              <option value="all" className="bg-slate-950">
+                All sources
+              </option>
+              {sourceOptions.map((source) => (
+                <option key={source} value={source} className="bg-slate-950">
+                  {source.replaceAll("_", " ")}
+                </option>
+              ))}
+            </select>
+            <select
+              value={healthFilter}
+              onChange={(event) => setHealthFilter(event.target.value)}
+              className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
+            >
+              <option value="all" className="bg-slate-950">
+                All health states
+              </option>
+              <option value="healthy" className="bg-slate-950">
+                Healthy
+              </option>
+              <option value="low" className="bg-slate-950">
+                Low stock
+              </option>
+              <option value="critical" className="bg-slate-950">
+                Critical
+              </option>
+              <option value="out_of_stock" className="bg-slate-950">
+                Out of stock
+              </option>
+            </select>
+          </div>
         </div>
 
         {isLoading ? (
