@@ -1,6 +1,7 @@
 import { Clock3, Globe, Languages, Package2 } from "lucide-react";
 
 import type { AplusDraftResponse, ProductListItem } from "../../lib/api";
+import { AplusDraftStateBadge } from "./AplusDraftStateBadge";
 import { formatLanguageLabel } from "./languages";
 
 type DraftMetadataBarProps = {
@@ -56,11 +57,7 @@ export function DraftMetadataBar({
           >
             {autoTranslate ? "Translated draft" : "Original draft"}
           </span>
-          {draft ? (
-            <span className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-200">
-              {draft.status.replaceAll("_", " ")}
-            </span>
-          ) : null}
+          {draft ? <AplusDraftStateBadge status={draft.status} /> : null}
         </div>
       </div>
 

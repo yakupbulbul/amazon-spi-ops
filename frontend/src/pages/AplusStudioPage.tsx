@@ -11,6 +11,7 @@ import {
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 
 import { AplusModuleEditorCard } from "../components/aplus/AplusModuleEditorCard";
+import { AplusReadinessPanel } from "../components/aplus/AplusReadinessPanel";
 import { DraftMetadataBar } from "../components/aplus/DraftMetadataBar";
 import { LanguageSelector } from "../components/aplus/LanguageSelector";
 import { ProductCombobox } from "../components/aplus/ProductCombobox";
@@ -134,6 +135,12 @@ export function AplusStudioPage() {
   const generationSourceLanguage = selectedDraft?.source_language ?? sourceLanguage;
   const generationTargetLanguage = selectedDraft?.target_language ?? targetLanguage;
   const generationAutoTranslate = selectedDraft?.auto_translate ?? autoTranslate;
+  const selectedDraftPayload = getEditablePayload(selectedDraft);
+  const hasUnsavedChanges =
+    selectedDraft !== null &&
+    editorDraft !== null &&
+    JSON.stringify(editorDraft) !== JSON.stringify(selectedDraftPayload);
+  const publishReady = selectedDraft?.readiness_report.is_publish_ready ?? false;
 
   const loadStudioData = useEffectEvent(async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
     if (!token) {
@@ -283,7 +290,15 @@ export function AplusStudioPage() {
 
       upsertDraft(draft);
       selectDraft(draft);
-      setStatusMessage("Draft validated and saved. The validated payload is ready for publish preview.");
+      if (draft.readiness_report.is_publish_ready) {
+        setStatusMessage(
+          "Draft validated and marked publish-ready. The current payload can now be prepared for publish.",
+        );
+      } else {
+        setStatusMessage(
+          `Draft validated with ${draft.readiness_report.blocking_errors.length} blocking issue(s) and ${draft.readiness_report.warnings.length} warning(s). Review the publish readiness panel before continuing.`,
+        );
+      }
     } catch (validateError) {
       setError(
         validateError instanceof Error ? validateError.message : "Unable to validate A+ draft.",
@@ -699,7 +714,12 @@ export function AplusStudioPage() {
                 <button
                   type="button"
                   onClick={() => void handlePublish()}
-                  disabled={!selectedDraftId || isPublishing}
+                  disabled={
+                    !selectedDraftId ||
+                    isPublishing ||
+                    hasUnsavedChanges ||
+                    !publishReady
+                  }
                   className="rounded-[1.25rem] bg-amber-300 px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {isPublishing ? "Preparing..." : "Prepare publish payload"}
@@ -718,6 +738,14 @@ export function AplusStudioPage() {
               />
             </div>
 
+            <div className="mt-5">
+              <AplusReadinessPanel
+                draft={selectedDraft}
+                product={selectedProduct}
+                hasUnsavedChanges={hasUnsavedChanges}
+              />
+            </div>
+
             {!editorDraft ? (
               <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm leading-6 text-slate-400">
                 Generate a draft or select an existing draft to start editing the A+ payload.
@@ -732,10 +760,17 @@ export function AplusStudioPage() {
                         ? autoTranslate
                           ? "Generating and translating structured A+ content..."
                           : "Generating structured A+ content..."
-                        : isValidating
-                          ? "Validating structured draft..."
-                          : "Preparing Amazon-compatible publish payload..."}
+                          : isValidating
+                            ? "Validating structured draft..."
+                            : "Preparing Amazon-compatible publish payload..."}
                     </span>
+                  </div>
+                ) : null}
+
+                {hasUnsavedChanges ? (
+                  <div className="rounded-[1.25rem] border border-sky-300/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+                    Editor changes are unsaved. Validate again to refresh the publish checklist and enable
+                    publish preview.
                   </div>
                 ) : null}
 
