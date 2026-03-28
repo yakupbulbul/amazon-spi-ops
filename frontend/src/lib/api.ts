@@ -52,6 +52,31 @@ export type DashboardSummaryResponse = {
   slack_delivery: SlackDeliveryItem[];
 };
 
+export type ProductInventorySummary = {
+  available_quantity: number;
+  reserved_quantity: number;
+  inbound_quantity: number;
+  alert_status: string;
+};
+
+export type ProductListItem = {
+  id: string;
+  sku: string;
+  asin: string;
+  title: string;
+  brand: string | null;
+  marketplace_id: string;
+  price_amount: string | null;
+  price_currency: string | null;
+  low_stock_threshold: number;
+  is_active: boolean;
+  inventory: ProductInventorySummary | null;
+};
+
+export type ProductListResponse = {
+  items: ProductListItem[];
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function apiRequest<T>(
@@ -106,6 +131,14 @@ export async function getCurrentUser(token: string): Promise<AuthUser> {
 
 export async function getDashboardSummary(token: string): Promise<DashboardSummaryResponse> {
   return apiRequest<DashboardSummaryResponse>("/dashboard/summary", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function getProducts(token: string): Promise<ProductListResponse> {
+  return apiRequest<ProductListResponse>("/products", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
