@@ -7,12 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.dependencies import get_current_user, get_product_service
 from app.models.entities import User
 from app.schemas.product import (
+    CatalogImportJobResponse,
     ProductListResponse,
     ProductMutationResponse,
     ProductPriceUpdateRequest,
     ProductStockUpdateRequest,
 )
 from app.services.product_service import ProductService
+from app.workers.main import import_amazon_catalog
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -23,6 +25,29 @@ def read_products(
     product_service: ProductService = Depends(get_product_service),
 ) -> ProductListResponse:
     return product_service.list_products()
+
+
+@router.post("/import", response_model=CatalogImportJobResponse)
+def import_products(
+    current_user: User = Depends(get_current_user),
+    product_service: ProductService = Depends(get_product_service),
+) -> CatalogImportJobResponse:
+    try:
+        job = product_service.create_import_job(requested_by=current_user)
+        import_amazon_catalog.send(job.id)
+        return job
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.get("/import-jobs/latest", response_model=CatalogImportJobResponse | None)
+def read_latest_import_job(
+    _: User = Depends(get_current_user),
+    product_service: ProductService = Depends(get_product_service),
+) -> CatalogImportJobResponse | None:
+    return product_service.get_latest_import_job()
 
 
 @router.patch("/{product_id}/price", response_model=ProductMutationResponse)
