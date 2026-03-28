@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -16,6 +16,7 @@ from app.schemas.aplus import (
     SupportedAplusLanguage,
 )
 from app.services.ai.openai_service import OpenAiAplusService
+from app.services.aplus_readiness import build_aplus_readiness_report
 from app.services.amazon.service import AmazonSpApiService
 from app.services.notification_service import NotificationService
 from app.services.product_service import ProductService
@@ -102,8 +103,16 @@ class AplusService:
     def validate_draft(self, *, draft_id: UUID, draft_payload: AplusDraftPayload) -> AplusDraftResponse:
         draft = self._get_draft(draft_id)
         product = self._get_product(draft.product_id)
+        readiness_report = build_aplus_readiness_report(
+            draft_payload=draft_payload,
+            checked_payload="validated",
+        )
         draft.validated_payload = draft_payload.model_dump(mode="json")
-        draft.status = DraftStatus.VALIDATED.value
+        draft.status = (
+            DraftStatus.READY_TO_PUBLISH.value
+            if readiness_report.is_publish_ready
+            else DraftStatus.VALIDATED.value
+        )
         self.db_session.commit()
         self.db_session.refresh(draft)
         return self._serialize_draft(draft=draft, product=product)
@@ -115,9 +124,23 @@ class AplusService:
         timestamp = self._now()
 
         try:
-            validated_payload = AplusDraftPayload.model_validate(
-                draft.validated_payload or draft.draft_payload
+            if draft.validated_payload is None:
+                raise ValueError("Validate the draft before preparing the publish payload.")
+
+            validated_payload = AplusDraftPayload.model_validate(draft.validated_payload)
+            readiness_report = build_aplus_readiness_report(
+                draft_payload=validated_payload,
+                checked_payload="validated",
             )
+            if not readiness_report.is_publish_ready:
+                error_summary = ", ".join(
+                    issue.message for issue in readiness_report.blocking_errors[:3]
+                )
+                raise ValueError(
+                    "Draft is not publish-ready. Resolve blocking issues first: "
+                    f"{error_summary}"
+                )
+
             prepared_payload = self._build_amazon_payload(
                 product=product,
                 draft_payload=validated_payload,
@@ -263,8 +286,11 @@ class AplusService:
             raise ValueError("Product not found.")
         return product
 
-    @staticmethod
-    def _serialize_draft(*, draft: AplusDraft, product: Product) -> AplusDraftResponse:
+    def _serialize_draft(self, *, draft: AplusDraft, product: Product) -> AplusDraftResponse:
+        checked_payload = "validated" if draft.validated_payload is not None else "draft"
+        active_payload = AplusDraftPayload.model_validate(
+            draft.validated_payload or draft.draft_payload
+        )
         return AplusDraftResponse(
             id=str(draft.id),
             product_id=str(product.id),
@@ -284,10 +310,18 @@ class AplusService:
                 if draft.validated_payload is not None
                 else None
             ),
+            readiness_report=build_aplus_readiness_report(
+                draft_payload=active_payload,
+                checked_payload=checked_payload,
+            ),
             created_at=draft.created_at,
             updated_at=draft.updated_at,
         )
 
     @staticmethod
     def _now() -> datetime:
-        return datetime.now(UTC)
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _now() -> datetime:
+        return datetime.now(timezone.utc)
