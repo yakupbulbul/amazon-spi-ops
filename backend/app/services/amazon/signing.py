@@ -27,7 +27,7 @@ class AwsSigV4Signer:
                 "AWS credentials are not configured. Live SP-API signing is unavailable."
             )
 
-        signed_request = request.copy()
+        signed_request = request
         timestamp = datetime.now(UTC)
         amz_date = timestamp.strftime("%Y%m%dT%H%M%SZ")
         date_stamp = timestamp.strftime("%Y%m%d")
