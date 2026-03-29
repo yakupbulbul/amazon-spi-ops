@@ -44,6 +44,9 @@ Supported variables:
 - `SELLER_ID`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
+- `OPENAI_IMAGE_MODEL`
+- `APLUS_LIVE_PUBLISH_ENABLED`
+- `APLUS_UPLOAD_MAX_BYTES`
 - `SLACK_WEBHOOK_URL`
 - `DATABASE_URL`
 - `REDIS_URL`
@@ -140,7 +143,14 @@ OpenAI:
 
 - A+ generation uses `OPENAI_API_KEY`
 - default model is `gpt-4o-mini`
+- A+ image generation uses `OPENAI_IMAGE_MODEL`
 - if `OPENAI_API_KEY` is unset, the backend returns a deterministic mock draft for local development
+
+A+ live publish:
+
+- keep `APLUS_LIVE_PUBLISH_ENABLED=false` in the default local `.env`
+- use `.env.live.amazon.example` as the starting point for a dedicated live seller-account test profile
+- follow [docs/aplus_live_publish_test.md](/Users/yakupbulbul/Documents/codex/amazon-spi/docs/aplus_live_publish_test.md) for the exact end-to-end validation flow
 
 Slack:
 
@@ -217,3 +227,29 @@ Verified in this environment:
 
 Host-side `pytest` may require local installation of `psycopg` if you are not running tests inside
 the project backend environment or container.
+
+## Real Amazon A+ Publish Subset
+
+Currently supported for real seller-account submit:
+
+- `hero` -> `STANDARD_HEADER_IMAGE_TEXT`
+- `feature` -> `STANDARD_SINGLE_IMAGE_HIGHLIGHTS`
+- `faq` -> `STANDARD_TEXT`
+
+Not yet supported for real Amazon publish:
+
+- `comparison`
+
+The Studio now tracks the latest publish job lifecycle and surfaces:
+
+- `draft`
+- `assets prepared`
+- `validated`
+- `submitted`
+- `in review`
+- `approved`
+- `rejected`
+
+Use the dedicated live runbook for the first end-to-end seller test:
+
+- [docs/aplus_live_publish_test.md](/Users/yakupbulbul/Documents/codex/amazon-spi/docs/aplus_live_publish_test.md)
