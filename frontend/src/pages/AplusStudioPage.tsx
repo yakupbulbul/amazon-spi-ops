@@ -12,6 +12,7 @@ import { startTransition, useEffect, useEffectEvent, useRef, useState } from "re
 
 import { AplusModuleEditorCard } from "../components/aplus/AplusModuleEditorCard";
 import { AplusOptimizationPanel } from "../components/aplus/AplusOptimizationPanel";
+import { AplusPublishLifecycleCard } from "../components/aplus/AplusPublishLifecycleCard";
 import { AplusPreviewModal } from "../components/aplus/AplusPreviewModal";
 import { AplusReadinessPanel } from "../components/aplus/AplusReadinessPanel";
 import { AplusScoreBadge } from "../components/aplus/AplusScoreBadge";
@@ -31,11 +32,13 @@ import {
   generateAplusModuleImage,
   getAplusAssets,
   getAplusDrafts,
+  getLatestAplusPublishJob,
   getProducts,
   publishAplusDraft,
   uploadAplusAsset,
   type AplusAsset,
   type AplusDraftPayload,
+  type AplusPublishJobResponse,
   type AplusDraftResponse,
   type AplusLanguage,
   type AplusModulePayload,
@@ -161,6 +164,7 @@ export function AplusStudioPage() {
   const [editorDraft, setEditorDraft] = useState<AplusDraftPayload | null>(null);
   const [assets, setAssets] = useState<AplusAsset[]>([]);
   const [publishResult, setPublishResult] = useState<AplusPublishResponse | null>(null);
+  const [latestPublishJob, setLatestPublishJob] = useState<AplusPublishJobResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -220,6 +224,8 @@ export function AplusStudioPage() {
     selectedDraft?.draft_payload.modules.some(
       (module) => module.image_status === "queued" || module.image_status === "generating",
     ) ?? false;
+  const hasPendingPublishReview =
+    latestPublishJob?.status === "submitted" || latestPublishJob?.status === "in_review";
 
   const loadStudioData = useEffectEvent(async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
     if (!token) {
@@ -349,6 +355,53 @@ export function AplusStudioPage() {
     };
   }, [hasPendingImageGeneration, hasUnsavedChanges, selectedDraftId, token]);
 
+  useEffect(() => {
+    if (!token || !selectedDraftId) {
+      setLatestPublishJob(null);
+      return;
+    }
+
+    let cancelled = false;
+    void getLatestAplusPublishJob(token, selectedDraftId, true)
+      .then((job) => {
+        if (!cancelled) {
+          setLatestPublishJob(job);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLatestPublishJob(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDraftId, token]);
+
+  useEffect(() => {
+    if (!token || !selectedDraftId || !hasPendingPublishReview) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void getLatestAplusPublishJob(token, selectedDraftId, true)
+        .then((job) => {
+          if (!job) {
+            return;
+          }
+          setLatestPublishJob(job);
+        })
+        .catch(() => {
+          // Keep polling passive. Explicit publish errors already surface in the primary banner.
+        });
+    }, 5000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hasPendingPublishReview, selectedDraftId, token]);
+
   function upsertDraft(nextDraft: AplusDraftResponse) {
     setDrafts((currentDrafts) => [
       nextDraft,
@@ -367,6 +420,7 @@ export function AplusStudioPage() {
     setEditorDraft(getEditablePayload(draft));
     setExpandedModules([0]);
     setPublishResult(null);
+    setLatestPublishJob(null);
     setError(null);
   }
 
@@ -463,6 +517,7 @@ export function AplusStudioPage() {
       const response = await publishAplusDraft(token, selectedDraftId);
       upsertDraft(response.draft);
       selectDraft(response.draft);
+      setLatestPublishJob(response.publish_job);
       setPublishResult(response);
       setStatusMessage(response.message);
     } catch (publishError) {
@@ -1040,6 +1095,13 @@ export function AplusStudioPage() {
                 draft={selectedDraft}
                 product={selectedProduct}
                 hasUnsavedChanges={hasUnsavedChanges}
+              />
+            </div>
+
+            <div className="mt-5">
+              <AplusPublishLifecycleCard
+                publishJob={latestPublishJob}
+                formatTimestamp={formatTimestamp}
               />
             </div>
 
