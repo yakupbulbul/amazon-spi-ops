@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.entities import AplusDraft, AplusPublishJob, Product, User
 from app.models.enums import DraftStatus, JobStatus
 from app.schemas.aplus import (
     AplusDraftListResponse,
     AplusDraftPayload,
     AplusDraftResponse,
+    AplusModulePayload,
     AplusPublishResponse,
     SupportedAplusLanguage,
 )
@@ -19,8 +20,12 @@ from app.services.ai.openai_service import OpenAiAplusService
 from app.services.aplus_optimization import build_aplus_optimization_report
 from app.services.aplus_readiness import build_aplus_readiness_report
 from app.services.amazon.service import AmazonSpApiService
+from app.services.media_storage import MediaStorageService
 from app.services.notification_service import NotificationService
 from app.services.product_service import ProductService
+
+if TYPE_CHECKING:
+    from app.models.entities import AplusAsset, AplusDraft, Product, User
 
 
 class AplusService:
@@ -29,12 +34,16 @@ class AplusService:
         db_session: Session,
         amazon_service: AmazonSpApiService,
         openai_service: OpenAiAplusService,
+        media_storage_service: MediaStorageService | None = None,
     ) -> None:
         self.db_session = db_session
         self.amazon_service = amazon_service
         self.openai_service = openai_service
+        self.media_storage_service = media_storage_service or MediaStorageService()
 
     def list_drafts(self) -> AplusDraftListResponse:
+        from app.models.entities import AplusDraft, Product
+
         drafts = self.db_session.execute(
             select(AplusDraft, Product)
             .join(Product, Product.id == AplusDraft.product_id)
@@ -83,6 +92,8 @@ class AplusService:
                 source_language=source_language,
                 target_language=effective_target_language,
             )
+
+        from app.models.entities import AplusDraft
 
         draft = AplusDraft(
             product_id=product.id,
@@ -148,6 +159,8 @@ class AplusService:
                 target_language=draft.target_language,
             )
 
+            from app.models.entities import AplusPublishJob
+
             publish_job = AplusPublishJob(
                 draft_id=draft.id,
                 status=JobStatus.SUCCEEDED.value,
@@ -189,6 +202,8 @@ class AplusService:
                 prepared_payload=prepared_payload,
             )
         except Exception as exc:
+            from app.models.entities import AplusPublishJob
+
             publish_job = AplusPublishJob(
                 draft_id=draft.id,
                 status=JobStatus.FAILED.value,
@@ -225,17 +240,10 @@ class AplusService:
     ) -> dict[str, object]:
         locale = self._marketplace_locale(product.marketplace_id)
         draft_locale = target_language or locale
-        content_modules = []
-        for module in draft_payload.modules:
-            content_modules.append(
-                {
-                    "contentModuleType": self._amazon_module_type(module.module_type),
-                    "headline": module.headline,
-                    "body": module.body,
-                    "bullets": module.bullets,
-                    "imageBrief": module.image_brief,
-                }
-            )
+        content_modules = self._build_publishable_modules(
+            product=product,
+            draft_payload=draft_payload,
+        )
 
         amazon_content = {
             "contentDocument": {
@@ -257,14 +265,17 @@ class AplusService:
         )
 
     @staticmethod
-    def _amazon_module_type(module_type: str) -> str:
+    def _amazon_module_type(module_type: str, *, has_image: bool) -> str:
         mapping = {
-            "hero": "STANDARD_HEADER_IMAGE_TEXT",
-            "feature": "STANDARD_SINGLE_IMAGE_HIGHLIGHTS",
+            "hero": "STANDARD_HEADER_IMAGE_TEXT" if has_image else "STANDARD_TEXT",
+            "feature": "STANDARD_SINGLE_IMAGE_HIGHLIGHTS" if has_image else "STANDARD_TEXT",
             "comparison": "STANDARD_COMPARISON_TABLE",
             "faq": "STANDARD_TEXT",
         }
-        return mapping.get(module_type, "STANDARD_SINGLE_IMAGE_HIGHLIGHTS")
+        return mapping.get(
+            module_type,
+            "STANDARD_SINGLE_IMAGE_HIGHLIGHTS" if has_image else "STANDARD_TEXT",
+        )
 
     @staticmethod
     def _marketplace_locale(marketplace_id: str) -> str:
@@ -275,13 +286,184 @@ class AplusService:
         }
         return mapping.get(marketplace_id, "en-US")
 
+    def _build_publishable_modules(
+        self,
+        *,
+        product: Product,
+        draft_payload: AplusDraftPayload,
+    ) -> list[dict[str, object]]:
+        content_modules: list[dict[str, object]] = []
+        errors: list[str] = []
+
+        for index, module in enumerate(draft_payload.modules, start=1):
+            try:
+                content_modules.append(
+                    self._build_publishable_module(
+                        product=product,
+                        module_index=index,
+                        module=module,
+                    )
+                )
+            except ValueError as exc:
+                errors.append(f"Module {index} ({module.module_type}): {exc}")
+
+        if errors:
+            raise ValueError(
+                "Draft contains non-publishable module content. " + " ".join(errors[:6])
+            )
+
+        return content_modules
+
+    def _build_publishable_module(
+        self,
+        *,
+        product: Product,
+        module_index: int,
+        module: AplusModulePayload,
+    ) -> dict[str, object]:
+        resolved_image_url = self._resolve_module_image_url(
+            product=product,
+            module_index=module_index,
+            module=module,
+        )
+        has_image = resolved_image_url is not None
+        publishable_module: dict[str, object] = {
+            "contentModuleType": self._amazon_module_type(module.module_type, has_image=has_image),
+            "headline": module.headline,
+            "body": module.body,
+            "bullets": module.bullets,
+        }
+
+        if module.module_type == "comparison":
+            publishable_module["comparisonRows"] = [
+                self._parse_comparison_row(row) for row in module.bullets
+            ]
+
+        if has_image:
+            publishable_module["image"] = {
+                "assetUrl": resolved_image_url,
+                "altText": module.image_brief,
+            }
+            if module.overlay_text and self._module_supports_overlay(module.module_type):
+                publishable_module["overlayText"] = module.overlay_text
+        else:
+            publishable_module["imageBrief"] = module.image_brief
+
+        return publishable_module
+
+    def _resolve_module_image_url(
+        self,
+        *,
+        product: Product,
+        module_index: int,
+        module: AplusModulePayload,
+    ) -> str | None:
+        supports_image = self._module_supports_image(module.module_type)
+
+        if not supports_image:
+            if module.image_mode != "none":
+                raise ValueError("selected image mode is not supported for this module type.")
+            if module.overlay_text:
+                raise ValueError("overlay text is not publishable for this module type.")
+            return None
+
+        if module.image_mode == "none":
+            if module.overlay_text:
+                raise ValueError("overlay text requires a publishable image selection.")
+            return None
+
+        if module.image_mode == "generated":
+            if not module.generated_image_url:
+                raise ValueError("generated image is selected but no generated asset is available.")
+            self._ensure_publishable_media_url(
+                module.generated_image_url,
+                field_label=f"Module {module_index} generated image",
+            )
+            return module.generated_image_url
+
+        if module.image_mode == "uploaded":
+            if not module.uploaded_image_url:
+                raise ValueError("uploaded image is selected but no uploaded asset is available.")
+            self._ensure_publishable_media_url(
+                module.uploaded_image_url,
+                field_label=f"Module {module_index} uploaded image",
+            )
+            return module.uploaded_image_url
+
+        if module.image_mode == "existing_asset":
+            if not module.selected_asset_id:
+                raise ValueError("existing asset mode requires a selected asset.")
+            asset = self._get_publishable_asset(
+                product=product,
+                asset_id=module.selected_asset_id,
+                field_label=f"Module {module_index} existing asset",
+            )
+            self._ensure_publishable_media_url(
+                asset.public_url,
+                field_label=f"Module {module_index} existing asset",
+            )
+            return asset.public_url
+
+        raise ValueError("unsupported image mode.")
+
+    def _get_publishable_asset(
+        self,
+        *,
+        product: Product,
+        asset_id: str,
+        field_label: str,
+    ) -> AplusAsset:
+        from app.models.entities import AplusAsset
+
+        try:
+            asset_uuid = UUID(asset_id)
+        except ValueError as exc:
+            raise ValueError(f"{field_label} has an invalid asset identifier.") from exc
+
+        asset = self.db_session.get(AplusAsset, asset_uuid)
+        if asset is None:
+            raise ValueError(f"{field_label} could not be found.")
+        if asset.product_id is not None and asset.product_id != product.id:
+            raise ValueError(f"{field_label} is outside the allowed product scope.")
+        return asset
+
+    def _ensure_publishable_media_url(self, public_url: str, *, field_label: str) -> None:
+        url_prefix = f"{self.media_storage_service.url_prefix}/"
+        if not public_url.startswith(url_prefix):
+            raise ValueError(f"{field_label} must resolve to a locally stored media asset.")
+
+        file_path = self.media_storage_service.resolve_public_url(public_url)
+        if not file_path.exists():
+            raise ValueError(f"{field_label} is missing from storage.")
+
+    @staticmethod
+    def _module_supports_image(module_type: str) -> bool:
+        return module_type in {"hero", "feature"}
+
+    @staticmethod
+    def _module_supports_overlay(module_type: str) -> bool:
+        return module_type in {"hero", "feature"}
+
+    @staticmethod
+    def _parse_comparison_row(value: str) -> dict[str, str]:
+        parts = [part.strip() for part in value.split("|")]
+        return {
+            "criteria": parts[0] if len(parts) > 0 else "",
+            "thisProduct": parts[1] if len(parts) > 1 else "",
+            "genericAlternative": parts[2] if len(parts) > 2 else "",
+        }
+
     def _get_draft(self, draft_id: UUID) -> AplusDraft:
+        from app.models.entities import AplusDraft
+
         draft = self.db_session.get(AplusDraft, draft_id)
         if draft is None:
             raise ValueError("A+ draft not found.")
         return draft
 
     def _get_product(self, product_id: UUID) -> Product:
+        from app.models.entities import Product
+
         product = self.db_session.get(Product, product_id)
         if product is None:
             raise ValueError("Product not found.")
@@ -321,10 +503,6 @@ class AplusService:
             created_at=draft.created_at,
             updated_at=draft.updated_at,
         )
-
-    @staticmethod
-    def _now() -> datetime:
-        return datetime.now(timezone.utc)
 
     @staticmethod
     def _now() -> datetime:

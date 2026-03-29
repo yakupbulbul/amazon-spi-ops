@@ -1,7 +1,73 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from uuid import uuid4
+
 from app.core.config import Settings
 from app.schemas.aplus import AplusDraftPayload
 from app.services.aplus_readiness import build_aplus_readiness_report
 from app.services.ai.openai_service import OpenAiAplusService
+from app.services.aplus_service import AplusService
+from app.services.media_storage import MediaStorageService
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.registry: dict[tuple[str, object], object] = {}
+
+    def get(self, model: object, key: object) -> object | None:
+        model_name = getattr(model, "__name__", str(model))
+        return self.registry.get((model_name, key))
+
+
+class StubLiveAdapter:
+    def prepare_aplus_content_payload(
+        self,
+        *,
+        asin: str,
+        draft_content: dict[str, object],
+        marketplace_id: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "asin": asin,
+            "marketplace_id": marketplace_id,
+            "draft_content": draft_content,
+        }
+
+
+class StubAmazonService:
+    def __init__(self) -> None:
+        self.live_adapter = StubLiveAdapter()
+
+
+def build_publish_product() -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uuid4(),
+        asin="B0PUBLISHTEST",
+        title="Publishable Product",
+        marketplace_id="A1PA6795UKMFR9",
+    )
+
+
+def build_publish_payload(modules: list[dict[str, object]]) -> AplusDraftPayload:
+    return AplusDraftPayload(
+        headline="Comfort that converts",
+        subheadline="Clear shopper outcomes with structure that stays concise for Amazon modules.",
+        brand_story=(
+            "This brand story explains the material choice, the intended use context, and the practical "
+            "difference versus generic alternatives without relying on vague quality claims."
+        ),
+        key_features=[
+            "Explains the core benefit in shopper language",
+            "Clarifies the usage scenario quickly",
+            "Shows a clear point of differentiation",
+        ],
+        modules=modules,
+        compliance_notes=[
+            "Verify all factual claims before publishing.",
+            "Review imagery and overlays for marketplace compliance.",
+        ],
+    )
 
 
 def test_generate_aplus_draft_returns_mock_payload_without_api_key() -> None:
@@ -326,3 +392,272 @@ def test_mock_generation_is_publish_ready_under_new_readiness_rules() -> None:
 
     assert report.is_publish_ready is True
     assert report.blocking_errors == []
+
+
+def test_build_amazon_payload_maps_resolved_module_images() -> None:
+    product = build_publish_product()
+
+    with TemporaryDirectory() as tmpdir:
+        storage = MediaStorageService(root=Path(tmpdir), url_prefix="/media")
+        storage.ensure_directories()
+        _, generated_url = storage.store_bytes(
+            subdirectory="aplus-assets",
+            suffix=".png",
+            content=b"\x89PNG\r\n\x1a\ntest-generated",
+        )
+        _, uploaded_url = storage.store_bytes(
+            subdirectory="aplus-assets",
+            suffix=".png",
+            content=b"\x89PNG\r\n\x1a\ntest-uploaded",
+        )
+        _, existing_url = storage.store_bytes(
+            subdirectory="aplus-assets",
+            suffix=".png",
+            content=b"\x89PNG\r\n\x1a\ntest-existing",
+        )
+
+        existing_asset_id = uuid4()
+        session = FakeSession()
+        session.registry[("AplusAsset", existing_asset_id)] = SimpleNamespace(
+            id=existing_asset_id,
+            product_id=product.id,
+            public_url=existing_url,
+        )
+
+        service = AplusService(
+            session,
+            StubAmazonService(),  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            storage,
+        )
+        payload = build_publish_payload(
+            [
+                {
+                    "module_type": "hero",
+                    "headline": "Hero with image",
+                    "body": "Lead with the main benefit and support it with a publishable hero image.",
+                    "bullets": ["Comfort first", "Use-case clarity"],
+                    "image_brief": "Show the product in realistic use.",
+                    "image_mode": "generated",
+                    "generated_image_url": generated_url,
+                    "overlay_text": "Built for daily comfort",
+                },
+                {
+                    "module_type": "feature",
+                    "headline": "Uploaded detail",
+                    "body": "Use an uploaded close-up to support the material and fit explanation clearly.",
+                    "bullets": ["Close-up detail", "Material benefit"],
+                    "image_brief": "Show a close-up detail view.",
+                    "image_mode": "uploaded",
+                    "uploaded_image_url": uploaded_url,
+                },
+                {
+                    "module_type": "feature",
+                    "headline": "Library asset",
+                    "body": "Reuse a vetted asset from the product library for a consistent module visual.",
+                    "bullets": ["Reusable asset", "Consistent presentation"],
+                    "image_brief": "Show the approved brand or product asset.",
+                    "image_mode": "existing_asset",
+                    "selected_asset_id": str(existing_asset_id),
+                    "overlay_text": "Trusted visual",
+                },
+                {
+                    "module_type": "comparison",
+                    "headline": "Compared with generic",
+                    "body": "Explain the practical advantage against a generic alternative.",
+                    "bullets": ["Fit | Tailored support | Basic support"],
+                    "image_brief": "Comparison visuals are optional in the editor but not used in publish.",
+                },
+            ]
+        )
+
+        prepared = service._build_amazon_payload(
+            product=product,
+            draft_payload=payload,
+            target_language="de-DE",
+        )
+
+    modules = prepared["draft_content"]["contentDocument"]["contentModuleList"]
+
+    assert modules[0]["contentModuleType"] == "STANDARD_HEADER_IMAGE_TEXT"
+    assert modules[0]["image"]["assetUrl"] == generated_url
+    assert modules[0]["overlayText"] == "Built for daily comfort"
+    assert "image_mode" not in modules[0]
+
+    assert modules[1]["contentModuleType"] == "STANDARD_SINGLE_IMAGE_HIGHLIGHTS"
+    assert modules[1]["image"]["assetUrl"] == uploaded_url
+
+    assert modules[2]["image"]["assetUrl"] == existing_url
+    assert modules[2]["overlayText"] == "Trusted visual"
+    assert "selected_asset_id" not in modules[2]
+
+    assert modules[3]["contentModuleType"] == "STANDARD_COMPARISON_TABLE"
+    assert "image" not in modules[3]
+    assert modules[3]["comparisonRows"][0]["criteria"] == "Fit"
+
+
+def test_build_amazon_payload_blocks_missing_generated_image() -> None:
+    product = build_publish_product()
+    service = AplusService(
+        FakeSession(),
+        StubAmazonService(),  # type: ignore[arg-type]
+        None,  # type: ignore[arg-type]
+        MediaStorageService(root=Path("/tmp/aplus-test-missing"), url_prefix="/media"),
+    )
+    payload = build_publish_payload(
+        [
+            {
+                "module_type": "hero",
+                "headline": "Hero missing image",
+                "body": "The image mode points at generated output, but the actual image is still missing.",
+                "bullets": ["Primary benefit", "Customer context"],
+                "image_brief": "Show the hero image.",
+                "image_mode": "generated",
+            },
+            {
+                "module_type": "feature",
+                "headline": "Feature text only",
+                "body": "Text-only feature content is still acceptable in the fallback mapping.",
+                "bullets": ["Benefit one"],
+                "image_brief": "No image required here.",
+            },
+            {
+                "module_type": "comparison",
+                "headline": "Comparison block",
+                "body": "Show a clear comparison against generic alternatives.",
+                "bullets": ["Fit | Tailored support | Basic support"],
+                "image_brief": "Comparison image brief.",
+            },
+        ]
+    )
+
+    try:
+        service._build_amazon_payload(product=product, draft_payload=payload, target_language="de-DE")
+    except ValueError as exc:
+        assert "generated image is selected but no generated asset is available" in str(exc)
+    else:
+        raise AssertionError("Expected missing generated image to block publish payload preparation.")
+
+
+def test_build_amazon_payload_resolves_existing_asset_scope_safely() -> None:
+    product = build_publish_product()
+    other_product_id = uuid4()
+
+    with TemporaryDirectory() as tmpdir:
+        storage = MediaStorageService(root=Path(tmpdir), url_prefix="/media")
+        storage.ensure_directories()
+        _, existing_url = storage.store_bytes(
+            subdirectory="aplus-assets",
+            suffix=".png",
+            content=b"\x89PNG\r\n\x1a\nscoped-existing",
+        )
+        asset_id = uuid4()
+        session = FakeSession()
+        session.registry[("AplusAsset", asset_id)] = SimpleNamespace(
+            id=asset_id,
+            product_id=other_product_id,
+            public_url=existing_url,
+        )
+
+        service = AplusService(
+            session,
+            StubAmazonService(),  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            storage,
+        )
+        payload = build_publish_payload(
+            [
+                {
+                    "module_type": "hero",
+                    "headline": "Scoped asset",
+                    "body": "This hero tries to use an asset from a different product scope and should fail.",
+                    "bullets": ["Benefit", "Scope"],
+                    "image_brief": "Show the selected asset.",
+                    "image_mode": "existing_asset",
+                    "selected_asset_id": str(asset_id),
+                },
+                {
+                    "module_type": "feature",
+                    "headline": "Fallback text",
+                    "body": "A second module keeps the draft shape valid for the payload schema.",
+                    "bullets": ["Second module"],
+                    "image_brief": "Text-only feature image brief.",
+                },
+                {
+                    "module_type": "comparison",
+                    "headline": "Comparison block",
+                    "body": "Provide a concise comparison body here to satisfy the schema and publish builder.",
+                    "bullets": ["Fit | Tailored support | Basic support"],
+                    "image_brief": "Comparison image brief.",
+                },
+            ]
+        )
+
+        try:
+            service._build_amazon_payload(
+                product=product,
+                draft_payload=payload,
+                target_language="de-DE",
+            )
+        except ValueError as exc:
+            assert "outside the allowed product scope" in str(exc)
+        else:
+            raise AssertionError("Expected out-of-scope asset usage to fail publish preparation.")
+
+
+def test_build_amazon_payload_rejects_unsupported_module_image_combinations() -> None:
+    product = build_publish_product()
+
+    with TemporaryDirectory() as tmpdir:
+        storage = MediaStorageService(root=Path(tmpdir), url_prefix="/media")
+        storage.ensure_directories()
+        _, uploaded_url = storage.store_bytes(
+            subdirectory="aplus-assets",
+            suffix=".png",
+            content=b"\x89PNG\r\n\x1a\nfaq-uploaded",
+        )
+        service = AplusService(
+            FakeSession(),
+            StubAmazonService(),  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            storage,
+        )
+        payload = build_publish_payload(
+            [
+                {
+                    "module_type": "hero",
+                    "headline": "Hero text only",
+                    "body": "The hero remains valid without an image because the publish mapping falls back safely.",
+                    "bullets": ["Value proposition", "Use-case clarity"],
+                    "image_brief": "Hero image brief.",
+                },
+                {
+                    "module_type": "faq",
+                    "headline": "FAQ with image",
+                    "body": "This module incorrectly tries to carry an uploaded image into a text-only module.",
+                    "bullets": ["Support answer"],
+                    "image_brief": "FAQ image brief.",
+                    "image_mode": "uploaded",
+                    "uploaded_image_url": uploaded_url,
+                    "overlay_text": "This should not publish",
+                },
+                {
+                    "module_type": "comparison",
+                    "headline": "Comparison block",
+                    "body": "Provide a concise comparison body here to keep the payload shape valid.",
+                    "bullets": ["Fit | Tailored support | Basic support"],
+                    "image_brief": "Comparison image brief.",
+                },
+            ]
+        )
+
+        try:
+            service._build_amazon_payload(
+                product=product,
+                draft_payload=payload,
+                target_language="de-DE",
+            )
+        except ValueError as exc:
+            assert "selected image mode is not supported for this module type" in str(exc)
+        else:
+            raise AssertionError("Expected unsupported FAQ image usage to fail publish preparation.")
