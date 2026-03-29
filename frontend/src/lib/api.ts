@@ -229,6 +229,19 @@ export type AplusAssetListResponse = {
   items: AplusAsset[];
 };
 
+export type AplusPublishJobResponse = {
+  id: string;
+  draft_id: string;
+  status: string;
+  content_reference_key: string | null;
+  error_message: string | null;
+  rejection_reasons: string[];
+  warnings: string[];
+  submitted_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
 export type AplusDraftResponse = {
   id: string;
   product_id: string;
@@ -259,6 +272,7 @@ export type AplusPublishResponse = {
   publish_job_id: string;
   status: string;
   message: string;
+  publish_job: AplusPublishJobResponse;
   prepared_payload: Record<string, unknown>;
 };
 
@@ -530,6 +544,26 @@ export async function publishAplusDraft(
     },
     body: JSON.stringify({ draft_id: draftId }),
   });
+}
+
+export async function getLatestAplusPublishJob(
+  token: string,
+  draftId: string,
+  refresh = true,
+): Promise<AplusPublishJobResponse | null> {
+  const searchParams = new URLSearchParams({
+    draft_id: draftId,
+    refresh: String(refresh),
+  });
+
+  return apiRequest<AplusPublishJobResponse | null>(
+    `/aplus/publish-jobs/latest?${searchParams.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
 }
 
 export async function getEvents(token: string): Promise<EventListResponse> {
