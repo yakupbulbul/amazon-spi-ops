@@ -530,9 +530,16 @@ export function AplusStudioPage() {
   }
 
   function handleProductChange(productId: string) {
+    if (selectedProduct?.id === productId) {
+      return;
+    }
+
     setSelectedProductId(productId);
     setSelectedDraftId(null);
+    setLatestPublishJob(null);
     setPublishResult(null);
+    setStatusMessage(null);
+    setError(null);
     const nextProduct = products.find((product) => product.id === productId) ?? null;
     setEditorDraft(buildEmptyDraft(nextProduct));
     setExpandedModules([0]);

@@ -53,10 +53,11 @@ export function ProductCombobox({
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [query, setQuery] = useState("");
+  const [searchValue, setSearchValue] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const deferredQuery = useDeferredValue(query);
+  const deferredQuery = useDeferredValue(searchValue);
+  const inputValue = isOpen ? searchValue : selectedProduct?.title ?? searchValue;
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -97,7 +98,7 @@ export function ProductCombobox({
 
   function handleSelect(product: ProductListItem) {
     onSelect(product);
-    setQuery("");
+    setSearchValue("");
     setIsOpen(false);
     inputRef.current?.blur();
   }
@@ -124,16 +125,25 @@ export function ProductCombobox({
             aria-expanded={isOpen}
             aria-controls={listboxId}
             aria-autocomplete="list"
-            value={query}
+            value={inputValue}
             disabled={disabled}
             onFocus={() => setIsOpen(true)}
             onChange={(event) => {
-              setQuery(event.target.value);
+              setSearchValue(event.target.value);
               setIsOpen(true);
             }}
             onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                if (isOpen && filteredProducts.length) {
+                  handleSelect(filteredProducts[activeIndex] ?? filteredProducts[0]);
+                }
+                return;
+              }
+
               if (!filteredProducts.length) {
                 if (event.key === "Escape") {
+                  event.preventDefault();
                   setIsOpen(false);
                 }
                 return;
@@ -147,10 +157,8 @@ export function ProductCombobox({
                 event.preventDefault();
                 setIsOpen(true);
                 setActiveIndex((currentIndex) => Math.max(currentIndex - 1, 0));
-              } else if (event.key === "Enter" && isOpen) {
-                event.preventDefault();
-                handleSelect(filteredProducts[activeIndex] ?? filteredProducts[0]);
               } else if (event.key === "Escape") {
+                event.preventDefault();
                 setIsOpen(false);
               }
             }}
@@ -187,20 +195,23 @@ export function ProductCombobox({
                       "flex w-full items-start justify-between gap-3 rounded-[1.25rem] px-4 py-3 text-left transition",
                       isActive ? "bg-white/[0.08]" : "hover:bg-white/[0.05]",
                     ].join(" ")}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                    }}
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-white">
-                        <HighlightedText text={product.title} query={query} />
+                        <HighlightedText text={product.title} query={searchValue} />
                       </p>
                       <p className="mt-1 text-xs text-slate-400">
-                        <HighlightedText text={`SKU ${product.sku}`} query={query} />
+                        <HighlightedText text={`SKU ${product.sku}`} query={searchValue} />
                         <span className="mx-2">·</span>
-                        <HighlightedText text={`ASIN ${product.asin}`} query={query} />
+                        <HighlightedText text={`ASIN ${product.asin}`} query={searchValue} />
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
                         <HighlightedText
                           text={`${product.brand ?? "Unbranded"} · ${product.marketplace_id}`}
-                          query={query}
+                          query={searchValue}
                         />
                       </p>
                     </div>
