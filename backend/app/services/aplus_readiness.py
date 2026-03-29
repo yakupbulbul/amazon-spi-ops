@@ -4,6 +4,7 @@ import re
 from typing import Literal
 
 from app.schemas.aplus import AplusDraftPayload, AplusReadinessIssue, AplusReadinessReport
+from app.services.amazon.aplus_contract import EDITORIAL_ONLY_MODULE_TYPES
 
 _BLOCKING_PHRASES: tuple[tuple[str, str], ...] = (
     ("best", "Avoid unverifiable superlatives such as 'best'."),
@@ -89,6 +90,13 @@ def build_aplus_readiness_report(
                 field_label=f"Module {index} image",
                 message="AI-generated imagery requires human review before publish.",
             )
+        if module.module_type in EDITORIAL_ONLY_MODULE_TYPES:
+            add_issue(
+                level="error",
+                code="unsupported_module_type",
+                field_label=f"Module {index}",
+                message="Comparison modules are editorial-only until the exact Amazon comparison contract is implemented.",
+            )
         if module.module_type not in {"hero", "feature"}:
             if module.image_mode != "none":
                 add_issue(
@@ -132,6 +140,73 @@ def build_aplus_readiness_report(
                 field_label=f"Module {index} overlay",
                 message="Overlay text requires a publishable image selection for this module.",
             )
+        elif module.image_mode == "none":
+            add_issue(
+                level="error",
+                code="missing_required_publish_image",
+                field_label=f"Module {index} image",
+                message="Hero and feature modules require an image in the real Amazon publish subset.",
+            )
+        if module.module_type == "hero":
+            if len(draft_payload.headline.strip()) > 150:
+                add_issue(
+                    level="error",
+                    code="hero_headline_too_long",
+                    field_label="Headline",
+                    message="The real Amazon header-image module allows a maximum of 150 characters for the headline.",
+                )
+            if len(module.headline.strip()) > 150:
+                add_issue(
+                    level="error",
+                    code="hero_subheadline_too_long",
+                    field_label=f"Module {index} headline",
+                    message="The real Amazon header-image module allows a maximum of 150 characters for the subheadline.",
+                )
+        if module.module_type == "feature":
+            if len(module.headline.strip()) > 160:
+                add_issue(
+                    level="error",
+                    code="feature_headline_too_long",
+                    field_label=f"Module {index} headline",
+                    message="The real Amazon single-image-highlights module allows a maximum of 160 characters for the headline.",
+                )
+            if len(module.body.strip()) > 1000:
+                add_issue(
+                    level="error",
+                    code="feature_body_too_long",
+                    field_label=f"Module {index} body",
+                    message="The main feature description exceeds Amazon's 1000-character limit for this module.",
+                )
+            if len([bullet for bullet in module.bullets if bullet.strip()]) < 2:
+                add_issue(
+                    level="error",
+                    code="feature_support_points_missing",
+                    field_label=f"Module {index} bullets",
+                    message="Real Amazon publish expects enough supporting points to fill the highlights layout. Add at least two concise bullets.",
+                )
+            for bullet_index, bullet in enumerate(module.bullets, start=1):
+                if len(bullet.strip()) > 100:
+                    add_issue(
+                        level="error",
+                        code="feature_bullet_too_long",
+                        field_label=f"Module {index} bullet {bullet_index}",
+                        message="Feature highlight bullets must stay within Amazon's 100-character limit.",
+                    )
+        if module.module_type == "faq":
+            if len(module.headline.strip()) > 160:
+                add_issue(
+                    level="error",
+                    code="faq_headline_too_long",
+                    field_label=f"Module {index} headline",
+                    message="The real Amazon text module allows a maximum of 160 characters for the headline.",
+                )
+            if len(module.body.strip()) > 5000:
+                add_issue(
+                    level="error",
+                    code="faq_body_too_long",
+                    field_label=f"Module {index} body",
+                    message="The real Amazon text module allows a maximum of 5000 characters for the body.",
+                )
 
     for field_label, text, warning_limit, error_limit in text_rules:
         text_length = len(text.strip())
@@ -157,14 +232,6 @@ def build_aplus_readiness_report(
             level="error",
             code="missing_hero",
             message="Add a hero module so the value proposition is immediately clear.",
-            field_label="Modules",
-        )
-    if "comparison" not in module_types:
-        missing_sections.append("Comparison section")
-        add_issue(
-            level="error",
-            code="missing_comparison",
-            message="Add a comparison module that frames the product against generic alternatives.",
             field_label="Modules",
         )
     if module_types.count("feature") < 2:
