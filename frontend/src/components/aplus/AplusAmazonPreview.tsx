@@ -187,10 +187,10 @@ function ModulePreviewCard({
           {unsupportedImageConfig ? (
             <span className="inline-flex items-start gap-2">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-              Comparison modules publish as table content only. Any attached Studio image or overlay is omitted.
+              Comparison modules are editorial-only in the current real Amazon publish subset and are not sent in the live request yet.
             </span>
           ) : (
-            "Comparison modules publish as text/table content. Image guidance stays in the image brief only."
+            "Comparison modules remain editorial-only until the exact Amazon comparison contract is implemented."
           )}
         </div>
         <div className="mt-3 overflow-hidden rounded-[0.9rem] border border-slate-200">
@@ -248,7 +248,7 @@ function ModulePreviewCard({
               {unsupportedImageConfig ? (
                 <span className="inline-flex items-start gap-2">
                   <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-                  This module publishes as text only. Attached Studio images or overlays are omitted.
+                  This module publishes as text only in the real Amazon subset. Attached Studio images or overlays are omitted.
                 </span>
               ) : (
                 "This module publishes as text only."

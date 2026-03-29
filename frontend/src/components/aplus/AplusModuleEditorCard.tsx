@@ -9,6 +9,10 @@ import {
 
 import type { AplusAsset, AplusModulePayload } from "../../lib/api";
 import { AplusModuleImageSection } from "./AplusModuleImageSection";
+import {
+  moduleIsEditorialOnly,
+  moduleSupportsPublishImage,
+} from "./previewImage";
 
 type AplusModuleEditorCardProps = {
   index: number;
@@ -82,6 +86,9 @@ export function AplusModuleEditorCard({
     });
   }
 
+  const publishSupported = !moduleIsEditorialOnly(module.module_type);
+  const requiresPublishImage = moduleSupportsPublishImage(module.module_type);
+
   return (
     <article className="rounded-[1.5rem] bg-white/[0.03] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -93,6 +100,16 @@ export function AplusModuleEditorCard({
             <span className="inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100">
               <LayoutTemplate className="h-3.5 w-3.5" />
               {moduleLabels[module.module_type]}
+            </span>
+            <span
+              className={[
+                "rounded-full px-2.5 py-1 text-xs",
+                publishSupported
+                  ? "border border-emerald-300/20 bg-emerald-500/10 text-emerald-100"
+                  : "border border-amber-300/20 bg-amber-500/10 text-amber-100",
+              ].join(" ")}
+            >
+              {publishSupported ? "Real publish supported" : "Editorial only"}
             </span>
           </div>
           <p className="mt-3 text-sm font-medium text-white">{module.headline || "Untitled module"}</p>
@@ -125,6 +142,21 @@ export function AplusModuleEditorCard({
 
       {isExpanded ? (
         <div className="mt-5 space-y-5 border-t border-white/10 pt-5">
+          <div
+            className={[
+              "rounded-[1.1rem] px-4 py-3 text-sm leading-6",
+              publishSupported
+                ? "border border-emerald-300/15 bg-emerald-500/10 text-emerald-100"
+                : "border border-amber-300/15 bg-amber-500/10 text-amber-100",
+            ].join(" ")}
+          >
+            {publishSupported
+              ? requiresPublishImage
+                ? "This module is part of the current real Amazon publish subset and must have a valid prepared image before publish."
+                : "This module is part of the current real Amazon publish subset and will publish as text-only content."
+              : "This module stays in the Studio for editorial planning only. It is not included in the real Amazon publish request yet."}
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
             <label className="block space-y-2">
               <span className="text-sm text-slate-300">Module type</span>

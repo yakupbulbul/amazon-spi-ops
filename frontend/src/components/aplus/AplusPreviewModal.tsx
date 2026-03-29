@@ -113,14 +113,14 @@ export function AplusPreviewModal({
                   Preview A+ layout
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                  Review the current editor draft in a larger preview surface without crowding the main
-                  page. Use the view modes below to compare the device-style frame and the stacked module
-                  composition.
+                  Review only the currently publishable Amazon subset in a larger preview surface without
+                  crowding the main page. Use the view modes below to compare the device-style frame and
+                  the stacked module composition.
                 </p>
                 <div className="mt-4 rounded-[1rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
-                  This preview mirrors the current publish mapping. Only publishable module images and
-                  supported overlays are shown here. Unsupported module-image combinations are called out
-                  and omitted.
+                  This preview mirrors the real Amazon request now supported by the backend: hero,
+                  feature, and faq modules only. Editorial-only modules are still visible in the editor,
+                  but they are not part of the publish request.
                 </div>
               </div>
 

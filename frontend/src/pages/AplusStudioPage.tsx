@@ -24,6 +24,7 @@ import {
   formatLanguageLabel,
   getDefaultTargetLanguage,
 } from "../components/aplus/languages";
+import { moduleIsRealPublishSupported } from "../components/aplus/previewImage";
 import { useAuth } from "../hooks/useAuth";
 import {
   generateAplusDraft,
@@ -54,7 +55,7 @@ const moduleLabels: Record<AplusModulePayload["module_type"], string> = {
 const defaultModuleOrder: AplusModulePayload["module_type"][] = [
   "hero",
   "feature",
-  "comparison",
+  "faq",
 ];
 
 function createModuleId(): string {
@@ -190,6 +191,9 @@ export function AplusStudioPage() {
     editorDraft !== null &&
     JSON.stringify(editorDraft) !== JSON.stringify(selectedDraftPayload);
   const publishReady = selectedDraft?.readiness_report.is_publish_ready ?? false;
+  const unsupportedModuleCount =
+    editorDraft?.modules.filter((module) => !moduleIsRealPublishSupported(module.module_type)).length ??
+    0;
   const optimizationScore = selectedDraft?.optimization_report.overall_score ?? null;
   const coreMessageSuggestions = getOptimizationSuggestions(selectedDraft, [
     "hero",
@@ -963,14 +967,21 @@ export function AplusStudioPage() {
                   {selectedDraft ? selectedDraft.product_title : "Draft editor"}
                 </h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-                  Edit the structured JSON fields directly. Validation persists the edited payload,
-                  and publish prepares the Amazon-compatible document preview.
+                  Edit the structured fields directly. Validation persists the edited payload, and the
+                  real publish action submits only the currently supported Amazon subset.
                 </p>
                 <div className="mt-4 rounded-[1.25rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
-                  Publish preparation now resolves uploaded, generated, and selected library assets into
-                  the Amazon payload when the module type supports them. Text-only modules still publish
-                  without images, and unsupported module-image combinations are blocked before publish.
+                  Real Amazon publish currently supports hero, feature, and faq modules only. Hero and
+                  feature modules require a valid prepared JPEG or PNG asset, and comparison modules stay
+                  editorial-only until their exact Amazon contract is implemented.
                 </div>
+                {unsupportedModuleCount > 0 ? (
+                  <div className="mt-4 rounded-[1.25rem] border border-rose-300/15 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-100">
+                    This draft currently contains {unsupportedModuleCount} editorial-only module
+                    {unsupportedModuleCount === 1 ? "" : "s"}. Validate after removing or converting
+                    them before using the real Amazon publish action.
+                  </div>
+                ) : null}
                 <div className="mt-4">
                   <AplusScoreBadge score={optimizationScore} />
                 </div>
@@ -1008,7 +1019,7 @@ export function AplusStudioPage() {
                   }
                   className="rounded-[1.25rem] bg-amber-300 px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {isPublishing ? "Preparing..." : "Prepare publish payload"}
+                  {isPublishing ? "Submitting..." : "Submit to Amazon review"}
                 </button>
               </div>
             </div>
@@ -1055,7 +1066,7 @@ export function AplusStudioPage() {
                           : "Generating structured A+ content..."
                           : isValidating
                             ? "Validating structured draft..."
-                            : "Preparing Amazon-compatible publish payload..."}
+                            : "Submitting the supported Amazon content document..."}
                     </span>
                   </div>
                 ) : null}
@@ -1063,7 +1074,7 @@ export function AplusStudioPage() {
                 {hasUnsavedChanges ? (
                   <div className="rounded-[1.25rem] border border-sky-300/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
                     Editor changes are unsaved. Validate again to refresh the publish checklist and enable
-                    publish preview.
+                    the real Amazon publish action.
                   </div>
                 ) : null}
 
@@ -1263,13 +1274,13 @@ export function AplusStudioPage() {
 
           <section>
             <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
-              <div className="flex items-center gap-3">
-                <FileJson2 className="h-5 w-5 text-sky-200" />
-                <div>
-                  <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Publish payload</p>
-                  <h3 className="mt-1 text-xl font-semibold text-white">Amazon-compatible preview</h3>
+                <div className="flex items-center gap-3">
+                  <FileJson2 className="h-5 w-5 text-sky-200" />
+                  <div>
+                  <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Publish trace</p>
+                  <h3 className="mt-1 text-xl font-semibold text-white">Real Amazon request payload</h3>
+                  </div>
                 </div>
-              </div>
 
               {publishResult ? (
                 <div className="mt-6 space-y-4">
@@ -1277,10 +1288,9 @@ export function AplusStudioPage() {
                     Publish job {publishResult.publish_job_id} completed with status {publishResult.status}.
                   </div>
                   <div className="rounded-[1.25rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
-                    This payload reflects the current publish mapping, including resolved module images
-                    where the module type supports them. Text-only modules continue to use the validated
-                    <span className="mx-1 font-mono text-xs">imageBrief</span>
-                    guidance without an embedded image object.
+                    This payload reflects the real SP-API publish subset. It includes Amazon upload
+                    destination references for supported image modules and excludes editorial-only
+                    modules from the live request.
                   </div>
                   <pre className="overflow-x-auto rounded-[1.5rem] border border-white/10 bg-slate-950 px-4 py-4 text-xs leading-6 text-slate-200">
                     {JSON.stringify(publishResult.prepared_payload, null, 2)}
@@ -1288,9 +1298,8 @@ export function AplusStudioPage() {
                 </div>
               ) : (
                 <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm leading-6 text-slate-400">
-                  Prepare the publish payload to inspect the Amazon-compatible JSON that will be sent
-                  by the backend publish workflow, including resolved module images when the module type
-                  supports them.
+                  Submit a validated draft to inspect the real SP-API request, asset preparation details,
+                  and Amazon content-reference trace returned by the backend publish workflow.
                 </div>
               )}
             </article>
