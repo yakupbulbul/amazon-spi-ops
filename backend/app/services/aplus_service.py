@@ -271,6 +271,10 @@ class AplusService:
                             "uploadDestinationId": prepared_asset.upload_destination_id,
                             "width": prepared_asset.width_pixels,
                             "height": prepared_asset.height_pixels,
+                            "cropWidth": prepared_asset.crop_width_pixels,
+                            "cropHeight": prepared_asset.crop_height_pixels,
+                            "cropOffsetX": prepared_asset.crop_offset_x_pixels,
+                            "cropOffsetY": prepared_asset.crop_offset_y_pixels,
                             "assetId": prepared_asset.asset_id,
                         }
                         for module_id, prepared_asset in prepared_assets.items()
@@ -358,6 +362,10 @@ class AplusService:
                     "uploadDestinationId": prepared_asset.upload_destination_id,
                     "width": prepared_asset.width_pixels,
                     "height": prepared_asset.height_pixels,
+                    "cropWidth": prepared_asset.crop_width_pixels,
+                    "cropHeight": prepared_asset.crop_height_pixels,
+                    "cropOffsetX": prepared_asset.crop_offset_x_pixels,
+                    "cropOffsetY": prepared_asset.crop_offset_y_pixels,
                     "assetId": prepared_asset.asset_id,
                 }
                 for module_id, prepared_asset in prepared_assets.items()
@@ -487,11 +495,32 @@ class AplusService:
         amazon_uploads = dict(metadata.get("amazon_uploads") or {})
         cached_upload = amazon_uploads.get(marketplace_id)
         if isinstance(cached_upload, dict) and cached_upload.get("upload_destination_id"):
+            width_pixels = int(cached_upload["width_pixels"])
+            height_pixels = int(cached_upload["height_pixels"])
+            crop_width_pixels = cached_upload.get("crop_width_pixels")
+            crop_height_pixels = cached_upload.get("crop_height_pixels")
+            crop_offset_x_pixels = cached_upload.get("crop_offset_x_pixels")
+            crop_offset_y_pixels = cached_upload.get("crop_offset_y_pixels")
+            if crop_width_pixels is None or crop_height_pixels is None:
+                (
+                    crop_width_pixels,
+                    crop_height_pixels,
+                    crop_offset_x_pixels,
+                    crop_offset_y_pixels,
+                ) = self._build_publish_crop_spec(
+                    module=module,
+                    width_pixels=width_pixels,
+                    height_pixels=height_pixels,
+                )
             return PreparedAmazonImageAsset(
                 upload_destination_id=str(cached_upload["upload_destination_id"]),
                 alt_text=module.image_brief.strip(),
-                width_pixels=int(cached_upload["width_pixels"]),
-                height_pixels=int(cached_upload["height_pixels"]),
+                width_pixels=width_pixels,
+                height_pixels=height_pixels,
+                crop_width_pixels=int(crop_width_pixels),
+                crop_height_pixels=int(crop_height_pixels),
+                crop_offset_x_pixels=int(crop_offset_x_pixels or 0),
+                crop_offset_y_pixels=int(crop_offset_y_pixels or 0),
                 asset_id=str(asset.id),
             )
 
@@ -513,6 +542,13 @@ class AplusService:
             content=content,
             expected_mime_type=asset.mime_type,
             field_label=f"Module '{module.headline}' image",
+        )
+        crop_width_pixels, crop_height_pixels, crop_offset_x_pixels, crop_offset_y_pixels = (
+            self._build_publish_crop_spec(
+                module=module,
+                width_pixels=width_pixels,
+                height_pixels=height_pixels,
+            )
         )
         content_md5 = b64encode(md5(content).digest()).decode("ascii")
         upload_destination = self.amazon_service.create_aplus_upload_destination(
@@ -539,6 +575,10 @@ class AplusService:
             "upload_destination_id": str(upload_destination_id),
             "width_pixels": width_pixels,
             "height_pixels": height_pixels,
+            "crop_width_pixels": crop_width_pixels,
+            "crop_height_pixels": crop_height_pixels,
+            "crop_offset_x_pixels": crop_offset_x_pixels,
+            "crop_offset_y_pixels": crop_offset_y_pixels,
             "mime_type": asset.mime_type,
             "file_size_bytes": len(content),
             "uploaded_at": self._now().isoformat(),
@@ -552,6 +592,10 @@ class AplusService:
             alt_text=module.image_brief.strip(),
             width_pixels=width_pixels,
             height_pixels=height_pixels,
+            crop_width_pixels=crop_width_pixels,
+            crop_height_pixels=crop_height_pixels,
+            crop_offset_x_pixels=crop_offset_x_pixels,
+            crop_offset_y_pixels=crop_offset_y_pixels,
             asset_id=str(asset.id),
         )
 
@@ -578,6 +622,63 @@ class AplusService:
         if width <= 0 or height <= 0:
             raise ValueError(f"{field_label} has invalid image dimensions.")
         return width, height
+
+    @staticmethod
+    def _build_publish_crop_spec(
+        *,
+        module: AplusModulePayload,
+        width_pixels: int,
+        height_pixels: int,
+    ) -> tuple[int, int, int, int]:
+        if module.module_type == "hero":
+            return AplusService._center_crop_to_ratio(
+                width_pixels=width_pixels,
+                height_pixels=height_pixels,
+                target_width=970,
+                target_height=600,
+                field_label=f"Module '{module.headline}' hero image",
+            )
+        if module.module_type == "feature":
+            return AplusService._center_crop_to_ratio(
+                width_pixels=width_pixels,
+                height_pixels=height_pixels,
+                target_width=300,
+                target_height=300,
+                field_label=f"Module '{module.headline}' feature image",
+            )
+        raise ValueError(f"Module '{module.headline}' is not part of the supported Amazon image subset.")
+
+    @staticmethod
+    def _center_crop_to_ratio(
+        *,
+        width_pixels: int,
+        height_pixels: int,
+        target_width: int,
+        target_height: int,
+        field_label: str,
+    ) -> tuple[int, int, int, int]:
+        if width_pixels < target_width or height_pixels < target_height:
+            raise ValueError(
+                f"{field_label} must be at least {target_width} x {target_height} pixels for Amazon publish."
+            )
+
+        source_ratio = width_pixels / height_pixels
+        target_ratio = target_width / target_height
+        if source_ratio > target_ratio:
+            crop_height = height_pixels
+            crop_width = int(round(height_pixels * target_ratio))
+        else:
+            crop_width = width_pixels
+            crop_height = int(round(width_pixels / target_ratio))
+
+        if crop_width < target_width or crop_height < target_height:
+            raise ValueError(
+                f"{field_label} cannot be cropped safely to the required Amazon aspect ratio."
+            )
+
+        offset_x = max((width_pixels - crop_width) // 2, 0)
+        offset_y = max((height_pixels - crop_height) // 2, 0)
+        return crop_width, crop_height, offset_x, offset_y
 
     def _get_draft(self, draft_id: UUID) -> AplusDraft:
         from app.models.entities import AplusDraft

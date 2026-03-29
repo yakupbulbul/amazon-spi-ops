@@ -1,0 +1,173 @@
+{
+  "contentDocument": {
+    "name": "Publishable Product A+ Content",
+    "contentType": "EBC",
+    "locale": "de-DE",
+    "contentModuleList": [
+      {
+        "contentModuleType": "STANDARD_HEADER_IMAGE_TEXT",
+        "standardHeaderImageText": {
+          "headline": {
+            "value": "Comfort that converts"
+          },
+          "block": {
+            "image": {
+              "uploadDestinationId": "sc/hero-asset.jpg",
+              "imageCropSpecification": {
+                "size": {
+                  "width": {
+                    "value": 1132,
+                    "units": "pixels"
+                  },
+                  "height": {
+                    "value": 700,
+                    "units": "pixels"
+                  }
+                },
+                "offset": {
+                  "x": {
+                    "value": 34,
+                    "units": "pixels"
+                  },
+                  "y": {
+                    "value": 0,
+                    "units": "pixels"
+                  }
+                }
+              },
+              "altText": "Hero product shot"
+            },
+            "headline": {
+              "value": "Daily comfort without bulk"
+            },
+            "body": {
+              "textList": [
+                {
+                  "value": "Clear benefits that stay concise for the supported Amazon modules."
+                },
+                {
+                  "value": "The hero section explains the main shopper outcome clearly and keeps the promise grounded in daily use."
+                },
+                {
+                  "value": "The brand story explains materials, usage context, and the practical reason this product feels different from generic alternatives."
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "contentModuleType": "STANDARD_SINGLE_IMAGE_HIGHLIGHTS",
+        "standardSingleImageHighlights": {
+          "image": {
+            "uploadDestinationId": "sc/feature-asset.jpg",
+            "imageCropSpecification": {
+              "size": {
+                "width": {
+                  "value": 900,
+                  "units": "pixels"
+                },
+                "height": {
+                  "value": 900,
+                  "units": "pixels"
+                }
+              },
+              "offset": {
+                "x": {
+                  "value": 0,
+                  "units": "pixels"
+                },
+                "y": {
+                  "value": 0,
+                  "units": "pixels"
+                }
+              }
+            },
+            "altText": "Feature detail image"
+          },
+          "headline": {
+            "value": "Why the fit matters"
+          },
+          "textBlock1": {
+            "headline": {
+              "value": "Why the fit matters"
+            },
+            "body": {
+              "textList": [
+                {
+                  "value": "Explain how the tailored fit improves comfort, reduces bunching, and keeps the product easier to use every day."
+                }
+              ]
+            }
+          },
+          "textBlock2": {
+            "headline": {
+              "value": "Stays smoother during daily movement"
+            },
+            "body": {
+              "textList": [
+                {
+                  "value": "Stays smoother during daily movement"
+                }
+              ]
+            }
+          },
+          "textBlock3": {
+            "headline": {
+              "value": "Reduces extra adjustment during setup"
+            },
+            "body": {
+              "textList": [
+                {
+                  "value": "Reduces extra adjustment during setup"
+                }
+              ]
+            }
+          },
+          "bulletedListBlock": {
+            "headline": {
+              "value": "Highlights"
+            },
+            "block": {
+              "textList": [
+                {
+                  "position": 1,
+                  "text": {
+                    "value": "Stays smoother during daily movement"
+                  }
+                },
+                {
+                  "position": 2,
+                  "text": {
+                    "value": "Reduces extra adjustment during setup"
+                  }
+                },
+                {
+                  "position": 3,
+                  "text": {
+                    "value": "Keeps the product looking more intentional"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "contentModuleType": "STANDARD_TEXT",
+        "standardText": {
+          "headline": {
+            "value": "Built for everyday use"
+          },
+          "body": {
+            "textList": [
+              {
+                "value": "Use this text block to reassure shoppers about the intended usage context, care expectations, and practical ownership details."
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

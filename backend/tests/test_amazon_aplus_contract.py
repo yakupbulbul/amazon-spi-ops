@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from app.schemas.aplus import AplusDraftPayload
 from app.services.amazon.aplus_contract import (
     AmazonContractMapper,
@@ -79,12 +82,20 @@ def build_prepared_assets() -> dict[str, PreparedAmazonImageAsset]:
             alt_text="Hero product shot",
             width_pixels=1200,
             height_pixels=700,
+            crop_width_pixels=1132,
+            crop_height_pixels=700,
+            crop_offset_x_pixels=34,
+            crop_offset_y_pixels=0,
         ),
         "feature-module-1001": PreparedAmazonImageAsset(
             upload_destination_id="sc/feature-asset.jpg",
             alt_text="Feature detail image",
             width_pixels=900,
             height_pixels=900,
+            crop_width_pixels=900,
+            crop_height_pixels=900,
+            crop_offset_x_pixels=0,
+            crop_offset_y_pixels=0,
         ),
     }
 
@@ -99,15 +110,11 @@ def test_contract_mapper_builds_real_supported_amazon_payload() -> None:
         prepared_assets_by_module_id=build_prepared_assets(),
     )
 
-    payload = request.model_dump(mode="json")
-    modules = payload["contentDocument"]["contentModuleList"]
+    payload = request.model_dump(mode="json", exclude_none=True)
+    fixture_path = Path(__file__).parent / "fixtures" / "aplus_supported_subset_payload.json"
+    expected_payload = json.loads(fixture_path.read_text())
 
-    assert payload["contentDocument"]["contentType"] == "EBC"
-    assert modules[0]["contentModuleType"] == "STANDARD_HEADER_IMAGE_TEXT"
-    assert modules[0]["standardHeaderImageText"]["block"]["image"]["uploadDestinationId"] == "sc/hero-asset.jpg"
-    assert modules[1]["contentModuleType"] == "STANDARD_SINGLE_IMAGE_HIGHLIGHTS"
-    assert modules[1]["standardSingleImageHighlights"]["image"]["uploadDestinationId"] == "sc/feature-asset.jpg"
-    assert modules[2]["contentModuleType"] == "STANDARD_TEXT"
+    assert payload == expected_payload
 
 
 def test_contract_mapper_rejects_editorial_only_modules() -> None:
@@ -140,3 +147,28 @@ def test_contract_mapper_requires_image_assets_for_supported_image_modules() -> 
         assert "missing an Amazon-prepared image asset" in str(exc)
     else:
         raise AssertionError("hero and feature modules must require prepared Amazon image assets")
+
+
+def test_contract_mapper_rejects_hero_images_below_required_dimensions() -> None:
+    mapper = AmazonContractMapper()
+    prepared_assets = build_prepared_assets()
+    prepared_assets["hero-module-1001"] = PreparedAmazonImageAsset(
+        upload_destination_id="sc/hero-asset.jpg",
+        alt_text="Hero product shot",
+        width_pixels=960,
+        height_pixels=590,
+        crop_width_pixels=960,
+        crop_height_pixels=590,
+    )
+
+    try:
+        mapper.map_content_document(
+            product_title="Publishable Product",
+            locale="de-DE",
+            draft_payload=build_supported_draft(),
+            prepared_assets_by_module_id=prepared_assets,
+        )
+    except ValueError as exc:
+        assert "Hero image must be at least 970 x 600 pixels" in str(exc)
+    else:
+        raise AssertionError("undersized hero images must be rejected")

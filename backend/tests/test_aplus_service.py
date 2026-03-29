@@ -815,6 +815,104 @@ def test_publish_to_amazon_rejects_editorial_only_modules() -> None:
             raise AssertionError("Expected editorial-only comparison modules to block real publish.")
 
 
+def test_prepare_amazon_asset_reuses_cached_upload_reference_without_reupload() -> None:
+    product = build_publish_product()
+
+    with TemporaryDirectory() as tmpdir:
+        storage = MediaStorageService(root=Path(tmpdir), url_prefix="/media")
+        storage.ensure_directories()
+        _, existing_url = storage.store_bytes(
+            subdirectory="aplus-assets",
+            suffix=".png",
+            content=b"\x89PNG\r\n\x1a\ncached-upload",
+        )
+        asset_id = uuid4()
+        session = FakeSession()
+        session.registry[("AplusAsset", asset_id)] = SimpleNamespace(
+            id=asset_id,
+            product_id=product.id,
+            asset_metadata={
+                "amazon_uploads": {
+                    product.marketplace_id: {
+                        "upload_destination_id": "sc/existing-upload.png",
+                        "width_pixels": 1200,
+                        "height_pixels": 700,
+                        "crop_width_pixels": 1132,
+                        "crop_height_pixels": 700,
+                        "crop_offset_x_pixels": 34,
+                        "crop_offset_y_pixels": 0,
+                    }
+                }
+            },
+            file_name="cached.png",
+            mime_type="image/png",
+            public_url=existing_url,
+        )
+
+        amazon_service = StubAmazonService()
+        service = AplusService(
+            session,
+            amazon_service,  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            storage,
+        )
+        module = AplusDraftPayload.model_validate(
+            {
+                "headline": "Comfort that converts",
+                "subheadline": "Clear benefits that stay concise for the supported Amazon modules.",
+                "brand_story": "The brand story explains materials, usage context, and the practical reason this product feels different from generic alternatives.",
+                "key_features": [
+                    "Explains the benefit in shopper language",
+                    "Clarifies the day-to-day use case",
+                    "Makes the point of difference concrete",
+                ],
+                "modules": [
+                    {
+                        "module_id": "hero-module-1001",
+                        "module_type": "hero",
+                        "headline": "Daily comfort without bulk",
+                        "body": "The hero section explains the main shopper outcome clearly and keeps the promise grounded in daily use.",
+                        "bullets": ["Comfort first", "Use-case clarity"],
+                        "image_brief": "Show the product in realistic use.",
+                        "image_mode": "existing_asset",
+                        "selected_asset_id": str(asset_id),
+                    },
+                    {
+                        "module_id": "faq-module-1001",
+                        "module_type": "faq",
+                        "headline": "Built for everyday use",
+                        "body": "Use this text block to reassure shoppers about the intended usage context, care expectations, and practical ownership details.",
+                        "bullets": [],
+                        "image_brief": "No image required."
+                    },
+                    {
+                        "module_id": "feature-module-1001",
+                        "module_type": "feature",
+                        "headline": "Why the fit matters",
+                        "body": "Explain how the tailored fit improves comfort, reduces bunching, and keeps the product easier to use every day.",
+                        "bullets": ["Stays smoother during daily movement", "Reduces extra adjustment during setup"],
+                        "image_brief": "Show a close-up detail view.",
+                        "image_mode": "none"
+                    }
+                ],
+                "compliance_notes": [
+                    "Verify all factual claims before publish.",
+                    "Check imagery and image text before submission."
+                ]
+            }
+        ).modules[0]
+
+        prepared_asset = service._ensure_amazon_asset_ready(
+            asset=session.registry[("AplusAsset", asset_id)],
+            module=module,
+            marketplace_id=product.marketplace_id,
+        )
+
+    assert prepared_asset.upload_destination_id == "sc/existing-upload.png"
+    assert prepared_asset.crop_width_pixels == 1132
+    assert [call[0] for call in amazon_service.calls] == []
+
+
 def test_refresh_publish_job_status_marks_approved_jobs_and_serializes_warnings() -> None:
     product = build_publish_product()
     draft_id = uuid4()
