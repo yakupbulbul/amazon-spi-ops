@@ -114,6 +114,8 @@ class AplusDraft(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default=DraftStatus.DRAFT.value, nullable=False)
     brand_tone: Mapped[str | None] = mapped_column(String(255))
     positioning: Mapped[str | None] = mapped_column(String(512))
+    variant_group_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    variant_role: Mapped[str] = mapped_column(String(16), default="original", nullable=False)
     source_language: Mapped[str] = mapped_column(String(16), default="de-DE", nullable=False)
     target_language: Mapped[str] = mapped_column(String(16), default="de-DE", nullable=False)
     auto_translate: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
