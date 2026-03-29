@@ -39,6 +39,7 @@ class StubAplusImageService(AplusImageService):
         super().__init__(FakeSession(), FakeImageProvider(), storage_service)
         self._draft = draft
         self._product = product
+        self.created_asset_count = 0
 
     def _serializer(self):  # type: ignore[override]
         return SimpleNamespace(_serialize_draft=lambda **_: {"status": "queued"})
@@ -55,6 +56,7 @@ class StubAplusImageService(AplusImageService):
         return []
 
     def _create_generated_asset(self, **kwargs):  # type: ignore[override]
+        self.created_asset_count += 1
         return SimpleNamespace(
             id=uuid4(),
             public_url="/media/aplus-assets/generated-test.png",
@@ -201,11 +203,22 @@ def test_process_generation_updates_same_module_after_reorder() -> None:
 
         reordered = AplusDraftPayload.model_validate(draft.draft_payload)
         reordered.modules = [reordered.modules[2], reordered.modules[0], reordered.modules[1]]
+        reordered_target = next(
+            module for module in reordered.modules if module.module_id == "feature-0001"
+        )
+        reordered_target.image_status = "queued"
+        reordered_target.image_request_fingerprint = service._build_request_fingerprint(
+            draft_id=draft.id,
+            module_id="feature-0001",
+            prompt=reordered_target.image_prompt or reordered_target.image_brief,
+            reference_asset_ids=reordered_target.reference_asset_ids,
+        )
         draft.draft_payload = reordered.model_dump(mode="json")
 
         service.process_generation(
             draft_id=draft.id,
             module_id="feature-0001",
+            request_fingerprint=reordered_target.image_request_fingerprint,
             requested_by_id=None,
         )
 
@@ -248,6 +261,7 @@ def test_process_generation_noops_when_target_module_was_removed() -> None:
         service.process_generation(
             draft_id=draft.id,
             module_id="feature-0001",
+            request_fingerprint="stale-fingerprint",
             requested_by_id=None,
         )
 
@@ -269,9 +283,138 @@ def test_stale_job_targeting_does_not_touch_other_modules() -> None:
         service.process_generation(
             draft_id=draft.id,
             module_id="missing-module",
+            request_fingerprint="stale-fingerprint",
             requested_by_id=None,
         )
 
     updated = AplusDraftPayload.model_validate(draft.draft_payload)
     assert all(module.image_status == "idle" for module in updated.modules)
     assert all(module.generated_image_url is None for module in updated.modules)
+
+
+def test_queue_image_generation_rejects_duplicate_inflight_request() -> None:
+    payload = build_payload()
+    draft, product = build_entities(payload)
+
+    with TemporaryDirectory() as tmpdir:
+        service = StubAplusImageService(
+            draft,
+            product,
+            MediaStorageService(root=Path(tmpdir), url_prefix="/media"),
+        )
+
+        requested_by = SimpleNamespace(id=uuid4())
+        _, should_enqueue = service.queue_image_generation(
+            draft_id=draft.id,
+            module_id="feature-0001",
+            image_prompt="Focused prompt",
+            overlay_text=None,
+            reference_asset_ids=["asset-a", "asset-b"],
+            requested_by=requested_by,
+        )
+
+        assert should_enqueue is True
+
+        try:
+            service.queue_image_generation(
+                draft_id=draft.id,
+                module_id="feature-0001",
+                image_prompt="Focused prompt",
+                overlay_text=None,
+                reference_asset_ids=["asset-a", "asset-b"],
+                requested_by=requested_by,
+            )
+        except ValueError as exc:
+            assert str(exc) == "Image generation is already in progress for this module."
+        else:
+            raise AssertionError("Expected duplicate in-flight image request to be rejected.")
+
+
+def test_process_generation_is_idempotent_for_redelivery() -> None:
+    payload = build_payload()
+    draft, product = build_entities(payload)
+
+    with TemporaryDirectory() as tmpdir:
+        service = StubAplusImageService(
+            draft,
+            product,
+            MediaStorageService(root=Path(tmpdir), url_prefix="/media"),
+        )
+
+        requested_by = SimpleNamespace(id=uuid4())
+        _, should_enqueue = service.queue_image_generation(
+            draft_id=draft.id,
+            module_id="feature-0001",
+            image_prompt="Focused prompt",
+            overlay_text=None,
+            reference_asset_ids=["asset-a"],
+            requested_by=requested_by,
+        )
+        assert should_enqueue is True
+
+        queued_payload = AplusDraftPayload.model_validate(draft.draft_payload)
+        fingerprint = next(
+            module.image_request_fingerprint
+            for module in queued_payload.modules
+            if module.module_id == "feature-0001"
+        )
+
+        service.process_generation(
+            draft_id=draft.id,
+            module_id="feature-0001",
+            request_fingerprint=fingerprint or "",
+            requested_by_id=None,
+        )
+        service.process_generation(
+            draft_id=draft.id,
+            module_id="feature-0001",
+            request_fingerprint=fingerprint or "",
+            requested_by_id=None,
+        )
+
+        updated = AplusDraftPayload.model_validate(draft.draft_payload)
+        target = next(module for module in updated.modules if module.module_id == "feature-0001")
+
+        assert target.image_status == "completed"
+        assert service.created_asset_count == 1
+
+
+def test_mark_enqueue_failed_updates_queued_module() -> None:
+    payload = build_payload()
+    draft, product = build_entities(payload)
+
+    with TemporaryDirectory() as tmpdir:
+        service = StubAplusImageService(
+            draft,
+            product,
+            MediaStorageService(root=Path(tmpdir), url_prefix="/media"),
+        )
+
+        requested_by = SimpleNamespace(id=uuid4())
+        service.queue_image_generation(
+            draft_id=draft.id,
+            module_id="feature-0001",
+            image_prompt="Focused prompt",
+            overlay_text=None,
+            reference_asset_ids=[],
+            requested_by=requested_by,
+        )
+        queued_payload = AplusDraftPayload.model_validate(draft.draft_payload)
+        fingerprint = next(
+            module.image_request_fingerprint
+            for module in queued_payload.modules
+            if module.module_id == "feature-0001"
+        )
+
+        service.mark_enqueue_failed(
+            draft_id=draft.id,
+            module_id="feature-0001",
+            request_fingerprint=fingerprint or "",
+            error_message="Broker unavailable",
+        )
+
+    updated = AplusDraftPayload.model_validate(draft.draft_payload)
+    target = next(module for module in updated.modules if module.module_id == "feature-0001")
+
+    assert target.image_status == "failed"
+    assert target.image_error_message == "Broker unavailable"

@@ -41,7 +41,12 @@ def dispatch_slack_notification(notification_id: str) -> None:
 
 
 @dramatiq.actor(queue_name="aplus-images")
-def generate_aplus_module_image(draft_id: str, module_id: str, requested_by_id: str | None = None) -> None:
+def generate_aplus_module_image(
+    draft_id: str,
+    module_id: str,
+    request_fingerprint: str,
+    requested_by_id: str | None = None,
+) -> None:
     with SessionLocal() as session:
         AplusImageService(
             session,
@@ -50,6 +55,7 @@ def generate_aplus_module_image(draft_id: str, module_id: str, requested_by_id: 
         ).process_generation(
             draft_id=UUID(draft_id),
             module_id=module_id,
+            request_fingerprint=request_fingerprint,
             requested_by_id=UUID(requested_by_id) if requested_by_id else None,
         )
 

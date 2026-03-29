@@ -104,6 +104,7 @@ function buildEmptyDraft(product?: ProductListItem | null): AplusDraftPayload {
       overlay_text: null,
       image_status: "idle",
       image_error_message: null,
+      image_request_fingerprint: null,
     })),
     compliance_notes: [
       "Verify every claim against approved listing attributes before publishing.",
@@ -565,6 +566,7 @@ export function AplusStudioPage() {
         generated_image_url: null,
         image_status: "completed",
         image_error_message: null,
+        image_request_fingerprint: null,
       });
       setImageUploadState((current) => ({
         ...current,
@@ -589,6 +591,7 @@ export function AplusStudioPage() {
       generated_image_url: null,
       image_status: "completed",
       image_error_message: null,
+      image_request_fingerprint: null,
     });
   }
 
@@ -600,6 +603,7 @@ export function AplusStudioPage() {
       selected_asset_id: null,
       image_status: "idle",
       image_error_message: null,
+      image_request_fingerprint: null,
     });
   }
 
@@ -663,6 +667,7 @@ export function AplusStudioPage() {
             overlay_text: null,
             image_status: "idle",
             image_error_message: null,
+            image_request_fingerprint: null,
           },
         ],
       };

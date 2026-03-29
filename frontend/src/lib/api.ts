@@ -158,6 +158,7 @@ export type AplusModulePayload = {
   overlay_text: string | null;
   image_status: "idle" | "queued" | "generating" | "completed" | "failed";
   image_error_message: string | null;
+  image_request_fingerprint: string | null;
 };
 
 export type AplusDraftPayload = {

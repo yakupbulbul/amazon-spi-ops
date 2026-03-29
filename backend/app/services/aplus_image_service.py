@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -36,35 +37,69 @@ class AplusImageService:
         overlay_text: str | None,
         reference_asset_ids: list[str],
         requested_by: User,
-    ) -> AplusDraftResponse:
+    ) -> tuple[AplusDraftResponse, bool]:
         draft = self._get_draft(draft_id)
         product = self._get_product(draft.product_id)
         payload = self._load_active_payload(draft)
         module = self._require_module(payload=payload, module_id=module_id)
-        module.image_mode = "generated"
-        module.image_prompt = image_prompt or self._build_default_prompt(
+        resolved_prompt = image_prompt or self._build_default_prompt(
             product=product,
             draft=draft,
             module_id=module_id,
             draft_payload=payload,
         )
+        fingerprint = self._build_request_fingerprint(
+            draft_id=draft_id,
+            module_id=module_id,
+            prompt=resolved_prompt,
+            reference_asset_ids=reference_asset_ids,
+        )
+        if (
+            module.image_request_fingerprint == fingerprint
+            and module.image_status in {"queued", "generating"}
+        ):
+            raise ValueError("Image generation is already in progress for this module.")
+        if (
+            module.image_request_fingerprint == fingerprint
+            and module.image_status == "completed"
+            and module.generated_image_url
+        ):
+            return self._serializer()._serialize_draft(draft=draft, product=product), False
+        module.image_mode = "generated"
+        module.image_prompt = resolved_prompt
         module.overlay_text = overlay_text
         module.reference_asset_ids = reference_asset_ids[:8]
         module.image_status = "queued"
         module.image_error_message = None
         module.generated_image_url = None
         module.selected_asset_id = None
+        module.image_request_fingerprint = fingerprint
         self._persist_payload(draft=draft, payload=payload)
         self.db_session.commit()
         self.db_session.refresh(draft)
-        return self._serializer()._serialize_draft(draft=draft, product=product)
+        return self._serializer()._serialize_draft(draft=draft, product=product), True
 
-    def process_generation(self, *, draft_id: UUID, module_id: str, requested_by_id: UUID | None) -> None:
+    def process_generation(
+        self,
+        *,
+        draft_id: UUID,
+        module_id: str,
+        request_fingerprint: str,
+        requested_by_id: UUID | None,
+    ) -> None:
         draft = self._get_draft(draft_id)
         product = self._get_product(draft.product_id)
         payload = self._load_active_payload(draft)
         module = self._find_module(payload=payload, module_id=module_id)
         if module is None:
+            return
+        if module.image_request_fingerprint != request_fingerprint:
+            return
+        if module.image_status == "completed" and module.generated_image_url:
+            return
+        if module.image_status == "generating":
+            return
+        if module.image_status != "queued":
             return
         module.image_status = "generating"
         module.image_error_message = None
@@ -96,6 +131,9 @@ class AplusImageService:
             if completed_module is None:
                 self.db_session.commit()
                 return
+            if completed_module.image_request_fingerprint != request_fingerprint:
+                self.db_session.commit()
+                return
             completed_module.image_mode = "generated"
             completed_module.generated_image_url = asset.public_url
             completed_module.selected_asset_id = str(asset.id)
@@ -109,10 +147,35 @@ class AplusImageService:
             if failed_module is None:
                 self.db_session.commit()
                 return
+            if failed_module.image_request_fingerprint != request_fingerprint:
+                self.db_session.commit()
+                return
             failed_module.image_status = "failed"
             failed_module.image_error_message = str(exc)[:1024]
             self._persist_payload(draft=draft, payload=payload)
             self.db_session.commit()
+
+    def mark_enqueue_failed(
+        self,
+        *,
+        draft_id: UUID,
+        module_id: str,
+        request_fingerprint: str,
+        error_message: str,
+    ) -> AplusDraftResponse:
+        draft = self._get_draft(draft_id)
+        product = self._get_product(draft.product_id)
+        payload = self._load_active_payload(draft)
+        module = self._find_module(payload=payload, module_id=module_id)
+        if module is None or module.image_request_fingerprint != request_fingerprint:
+            return self._serializer()._serialize_draft(draft=draft, product=product)
+
+        module.image_status = "failed"
+        module.image_error_message = error_message[:1024]
+        self._persist_payload(draft=draft, payload=payload)
+        self.db_session.commit()
+        self.db_session.refresh(draft)
+        return self._serializer()._serialize_draft(draft=draft, product=product)
 
     def _resolve_reference_paths(self, asset_ids: list[str]) -> list[Path]:
         paths: list[Path] = []
@@ -201,6 +264,17 @@ class AplusImageService:
         if module is None:
             raise ValueError("A+ module not found.")
         return module
+
+    @staticmethod
+    def _build_request_fingerprint(
+        *,
+        draft_id: UUID,
+        module_id: str,
+        prompt: str,
+        reference_asset_ids: list[str],
+    ) -> str:
+        normalized_refs = ",".join(sorted(reference_asset_ids[:8]))
+        return sha256(f"{draft_id}:{module_id}:{prompt}:{normalized_refs}".encode()).hexdigest()[:32]
 
     @staticmethod
     def _load_active_payload(draft: AplusDraft) -> AplusDraftPayload:
