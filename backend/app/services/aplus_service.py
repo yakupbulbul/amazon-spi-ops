@@ -17,13 +17,19 @@ from app.schemas.aplus import (
     AplusDraftListResponse,
     AplusDraftPayload,
     AplusDraftResponse,
+    AplusImproveResponse,
+    AplusImprovementChange,
     AplusModulePayload,
     AplusPublishJobResponse,
     AplusPublishResponse,
+    SupportedAplusImprovementCategory,
     SupportedAplusLanguage,
 )
 from app.services.ai.openai_service import OpenAiAplusService
-from app.services.aplus_optimization import build_aplus_optimization_report
+from app.services.aplus_optimization import (
+    build_aplus_improvement_issues,
+    build_aplus_optimization_report,
+)
 from app.services.aplus_readiness import build_aplus_readiness_report
 from app.services.amazon.aplus_contract import AmazonContractMapper, PreparedAmazonImageAsset
 from app.services.amazon.exceptions import AmazonRequestError
@@ -94,22 +100,9 @@ class AplusService:
     ) -> AplusDraftResponse:
         product = self._get_product(product_id)
         effective_target_language = target_language or source_language
-        product_context = ProductService(self.db_session, self.amazon_service).list_products()
-        product_summary = next(
-            (item for item in product_context.items if item.id == str(product.id)),
-            None,
-        )
+        product_context = self._build_product_context(product=product)
         draft_payload = self.openai_service.generate_aplus_draft(
-            product_context={
-                "title": product.title,
-                "brand": product.brand,
-                "sku": product.sku,
-                "asin": product.asin,
-                "marketplace_id": product.marketplace_id,
-                "price_amount": str(product.price_amount) if product.price_amount is not None else None,
-                "price_currency": product.price_currency,
-                "inventory": product_summary.inventory.model_dump() if product_summary and product_summary.inventory else None,
-            },
+            product_context=product_context,
             brand_tone=brand_tone,
             positioning=positioning,
             source_language=source_language,
@@ -156,6 +149,38 @@ class AplusService:
         self.db_session.commit()
         self.db_session.refresh(draft)
         return self._serialize_draft(draft=draft, product=product)
+
+    def improve_draft(
+        self,
+        *,
+        draft_id: UUID,
+        draft_payload: AplusDraftPayload,
+        category: SupportedAplusImprovementCategory,
+    ) -> AplusImproveResponse:
+        draft = self._get_draft(draft_id)
+        product = self._get_product(draft.product_id)
+        product_context = self._build_product_context(product=product)
+        issues = build_aplus_improvement_issues(
+            draft_payload=draft_payload,
+            category=category,
+        )
+        improved_payload, summary = self.openai_service.improve_aplus_draft(
+            draft_payload=draft_payload,
+            category=category,
+            issues=[issue.message for issue in issues],
+            language=draft.target_language,
+            product_context=product_context,
+        )
+        return AplusImproveResponse(
+            category=category,
+            summary=summary,
+            issues=issues,
+            improved_payload=improved_payload,
+            changes=self._build_improvement_changes(
+                original_payload=draft_payload,
+                improved_payload=improved_payload,
+            ),
+        )
 
     def publish_draft(self, *, draft_id: UUID) -> AplusPublishResponse:
         draft = self._get_draft(draft_id)
@@ -385,6 +410,25 @@ class AplusService:
             "A1F83G8C2ARO7P": "en-GB",
         }
         return mapping.get(marketplace_id, "en-US")
+
+    def _build_product_context(self, *, product: Product) -> dict[str, object]:
+        product_context = ProductService(self.db_session, self.amazon_service).list_products()
+        product_summary = next(
+            (item for item in product_context.items if item.id == str(product.id)),
+            None,
+        )
+        return {
+            "title": product.title,
+            "brand": product.brand,
+            "sku": product.sku,
+            "asin": product.asin,
+            "marketplace_id": product.marketplace_id,
+            "price_amount": str(product.price_amount) if product.price_amount is not None else None,
+            "price_currency": product.price_currency,
+            "inventory": product_summary.inventory.model_dump()
+            if product_summary and product_summary.inventory
+            else None,
+        }
 
     def _prepare_amazon_assets(
         self,
@@ -750,6 +794,90 @@ class AplusService:
             completed_at=publish_job.completed_at,
             created_at=publish_job.created_at,
         )
+
+    @staticmethod
+    def _build_improvement_changes(
+        *,
+        original_payload: AplusDraftPayload,
+        improved_payload: AplusDraftPayload,
+    ) -> list[AplusImprovementChange]:
+        changes: list[AplusImprovementChange] = []
+
+        def add_change(path: str, label: str, before: str, after: str) -> None:
+            if before == after:
+                return
+            changes.append(
+                AplusImprovementChange(
+                    path=path,
+                    label=label,
+                    before=before,
+                    after=after,
+                )
+            )
+
+        add_change(
+            "headline",
+            "Headline",
+            original_payload.headline,
+            improved_payload.headline,
+        )
+        add_change(
+            "subheadline",
+            "Subheadline",
+            original_payload.subheadline,
+            improved_payload.subheadline,
+        )
+        add_change(
+            "brand_story",
+            "Brand story",
+            original_payload.brand_story,
+            improved_payload.brand_story,
+        )
+
+        max_key_features = max(
+            len(original_payload.key_features),
+            len(improved_payload.key_features),
+        )
+        for index in range(max_key_features):
+            before = original_payload.key_features[index] if index < len(original_payload.key_features) else ""
+            after = improved_payload.key_features[index] if index < len(improved_payload.key_features) else ""
+            add_change(
+                f"key_features[{index}]",
+                f"Key feature {index + 1}",
+                before,
+                after,
+            )
+
+        original_modules = {module.module_id: module for module in original_payload.modules}
+        for module_index, improved_module in enumerate(improved_payload.modules, start=1):
+            original_module = original_modules.get(improved_module.module_id)
+            if original_module is None:
+                continue
+            module_label = f"Module {module_index}"
+            add_change(
+                f"modules.{improved_module.module_id}.headline",
+                f"{module_label} headline",
+                original_module.headline,
+                improved_module.headline,
+            )
+            add_change(
+                f"modules.{improved_module.module_id}.body",
+                f"{module_label} body",
+                original_module.body,
+                improved_module.body,
+            )
+            max_bullets = max(len(original_module.bullets), len(improved_module.bullets))
+            for bullet_index in range(max_bullets):
+                before = original_module.bullets[bullet_index] if bullet_index < len(original_module.bullets) else ""
+                after = improved_module.bullets[bullet_index] if bullet_index < len(improved_module.bullets) else ""
+                add_change(
+                    f"modules.{improved_module.module_id}.bullets[{bullet_index}]",
+                    f"{module_label} bullet {bullet_index + 1}",
+                    before,
+                    after,
+                )
+
+        return changes
 
     def _create_publish_job(self, *, draft_id: UUID, created_at: datetime):
         from app.models.entities import AplusPublishJob

@@ -8,6 +8,7 @@ from app.schemas.aplus import (
     AplusOptimizationReport,
     AplusOptimizationSectionInsight,
     AplusOptimizationSuggestion,
+    SupportedAplusImprovementCategory,
 )
 
 _GENERIC_PHRASES: tuple[str, ...] = (
@@ -138,6 +139,37 @@ _IMAGE_GENERIC_TERMS: tuple[str, ...] = (
     "lifestyle",
     "freigestellt",
 )
+
+_CATEGORY_SECTION_KEYWORDS: dict[SupportedAplusImprovementCategory, tuple[str, ...]] = {
+    "structure": (
+        "hero",
+        "feature",
+        "usage",
+        "comparison",
+        "brand story",
+        "structur",
+    ),
+    "clarity": (
+        "headline",
+        "module copy",
+        "benefit messaging",
+        "cross-section",
+        "clarity",
+    ),
+    "differentiation": (
+        "differentiation",
+        "comparison",
+        "brand story",
+    ),
+    "completeness": (
+        "technical detail",
+        "customer education",
+        "usage",
+        "brand story",
+        "comparison",
+        "complete",
+    ),
+}
 
 
 def build_aplus_optimization_report(*, draft_payload: AplusDraftPayload) -> AplusOptimizationReport:
@@ -379,6 +411,79 @@ def build_aplus_optimization_report(*, draft_payload: AplusDraftPayload) -> Aplu
         warnings=warnings,
         section_insights=section_insights,
     )
+
+
+def build_aplus_improvement_issues(
+    *,
+    draft_payload: AplusDraftPayload,
+    category: SupportedAplusImprovementCategory,
+) -> list[AplusOptimizationSuggestion]:
+    report = build_aplus_optimization_report(draft_payload=draft_payload)
+    suggestions = [*report.critical_issues, *report.warnings]
+    keywords = _CATEGORY_SECTION_KEYWORDS[category]
+    matched = [
+        suggestion
+        for suggestion in suggestions
+        if any(keyword in normalize_text(f"{suggestion.section} {suggestion.title} {suggestion.message}") for keyword in keywords)
+    ]
+
+    if category in {"structure", "completeness"} and report.missing_sections:
+        matched.extend(
+            AplusOptimizationSuggestion(
+                severity="critical" if category == "structure" else "warning",
+                section="Structure",
+                title=f"Address {section}",
+                message=f"Improve the draft so it covers {section.lower()} more clearly.",
+            )
+            for section in report.missing_sections[:3]
+        )
+
+    if matched:
+        deduped: list[AplusOptimizationSuggestion] = []
+        seen: set[tuple[str, str, str]] = set()
+        for suggestion in matched:
+            key = (suggestion.section, suggestion.title, suggestion.message)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(suggestion)
+        return deduped[:5]
+
+    fallbacks: dict[SupportedAplusImprovementCategory, list[AplusOptimizationSuggestion]] = {
+        "structure": [
+            AplusOptimizationSuggestion(
+                severity="warning",
+                section="Structure",
+                title="Sharpen module roles",
+                message="Make the hero lead the value proposition and ensure each module adds a distinct supporting job.",
+            )
+        ],
+        "clarity": [
+            AplusOptimizationSuggestion(
+                severity="warning",
+                section="Clarity",
+                title="Tighten dense copy",
+                message="Shorten headings and make each section explain one idea in more direct shopper language.",
+            )
+        ],
+        "differentiation": [
+            AplusOptimizationSuggestion(
+                severity="warning",
+                section="Differentiation",
+                title="Replace generic phrasing",
+                message="Swap broad quality language for a concrete product advantage and clearer alternative framing.",
+            )
+        ],
+        "completeness": [
+            AplusOptimizationSuggestion(
+                severity="warning",
+                section="Completeness",
+                title="Fill practical gaps",
+                message="Add usage, material, fit, or care detail so shoppers do not have to infer key buying information.",
+            )
+        ],
+    }
+    return fallbacks[category]
 
 
 def _collect_copy(draft_payload: AplusDraftPayload) -> list[tuple[str, str]]:
