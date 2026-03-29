@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from base64 import b64encode
 from datetime import datetime, timezone
+from hashlib import md5
+from io import BytesIO
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import select
+from PIL import Image, UnidentifiedImageError
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.enums import DraftStatus, JobStatus
 from app.schemas.aplus import (
     AplusDraftListResponse,
@@ -19,6 +24,7 @@ from app.schemas.aplus import (
 from app.services.ai.openai_service import OpenAiAplusService
 from app.services.aplus_optimization import build_aplus_optimization_report
 from app.services.aplus_readiness import build_aplus_readiness_report
+from app.services.amazon.aplus_contract import AmazonContractMapper, PreparedAmazonImageAsset
 from app.services.amazon.service import AmazonSpApiService
 from app.services.media_storage import MediaStorageService
 from app.services.notification_service import NotificationService
@@ -40,6 +46,7 @@ class AplusService:
         self.amazon_service = amazon_service
         self.openai_service = openai_service
         self.media_storage_service = media_storage_service or MediaStorageService()
+        self.contract_mapper = AmazonContractMapper()
 
     def list_drafts(self) -> AplusDraftListResponse:
         from app.models.entities import AplusDraft, Product
@@ -153,7 +160,7 @@ class AplusService:
                     f"{error_summary}"
                 )
 
-            prepared_payload = self._build_amazon_payload(
+            prepared_payload = self._publish_to_amazon(
                 product=product,
                 draft_payload=validated_payload,
                 target_language=draft.target_language,
@@ -164,14 +171,13 @@ class AplusService:
             publish_job = AplusPublishJob(
                 draft_id=draft.id,
                 status=JobStatus.SUCCEEDED.value,
-                external_submission_id="preview-only",
+                external_submission_id=str(prepared_payload["contentReferenceKey"]),
                 submitted_at=timestamp,
                 completed_at=timestamp,
                 created_at=timestamp,
             )
             self.db_session.add(publish_job)
             draft.status = DraftStatus.READY_TO_PUBLISH.value
-            draft.validated_payload = validated_payload.model_dump(mode="json")
             notification = notification_service.queue_event_notification(
                 event_type="aplus_publish",
                 source="aplus_studio",
@@ -196,8 +202,7 @@ class AplusService:
                 publish_job_id=str(publish_job.id),
                 status=publish_job.status,
                 message=(
-                    "Prepared an Amazon-compatible A+ payload. "
-                    "Live submission remains account-dependent and can be added to the publish adapter."
+                    "Submitted the A+ content document to Amazon for review using the supported real publish subset."
                 ),
                 prepared_payload=prepared_payload,
             )
@@ -231,51 +236,80 @@ class AplusService:
             notification_service.dispatch_notification(notification.id)
             raise
 
-    def _build_amazon_payload(
+    def _publish_to_amazon(
         self,
         *,
         product: Product,
         draft_payload: AplusDraftPayload,
         target_language: str,
     ) -> dict[str, object]:
-        locale = self._marketplace_locale(product.marketplace_id)
-        draft_locale = target_language or locale
-        content_modules = self._build_publishable_modules(
+        locale = target_language or self._marketplace_locale(product.marketplace_id)
+        prepared_assets = self._prepare_amazon_assets(
             product=product,
             draft_payload=draft_payload,
         )
+        content_document_request = self.contract_mapper.map_content_document(
+            product_title=product.title,
+            locale=locale,
+            draft_payload=draft_payload,
+            prepared_assets_by_module_id=prepared_assets,
+        )
+        request_payload = content_document_request.model_dump(mode="json")
 
-        amazon_content = {
-            "contentDocument": {
-                "name": f"{product.title} A+ draft",
-                "locale": draft_locale,
-                "contentSubType": "EMC",
-                "headline": draft_payload.headline,
-                "subheadline": draft_payload.subheadline,
-                "brandStory": draft_payload.brand_story,
-                "keyFeatures": draft_payload.key_features,
-                "contentModuleList": content_modules,
-                "complianceNotes": draft_payload.compliance_notes,
-            }
-        }
-        return self.amazon_service.live_adapter.prepare_aplus_content_payload(
-            asin=product.asin,
-            draft_content=amazon_content,
+        validation_response = self.amazon_service.validate_aplus_content_document(
             marketplace_id=product.marketplace_id,
+            asin_set=[product.asin],
+            document_request=request_payload,
+        )
+        validation_errors = validation_response.get("errors") or []
+        if validation_errors:
+            raise ValueError(
+                "Amazon validation rejected the A+ content document: "
+                + "; ".join(error.get("message", "Unknown validation error") for error in validation_errors[:5])
+            )
+
+        create_response = self.amazon_service.create_aplus_content_document(
+            marketplace_id=product.marketplace_id,
+            document_request=request_payload,
+        )
+        content_reference_key = create_response.get("contentReferenceKey")
+        if not content_reference_key:
+            raise ValueError("Amazon did not return a contentReferenceKey for the new A+ content document.")
+
+        asin_relations_request = self.contract_mapper.build_asin_relations(asin=product.asin)
+        asin_relations_response = self.amazon_service.post_aplus_content_document_asin_relations(
+            marketplace_id=product.marketplace_id,
+            content_reference_key=content_reference_key,
+            asin_set=asin_relations_request.asinSet,
+        )
+        approval_response = self.amazon_service.submit_aplus_content_document_for_approval(
+            marketplace_id=product.marketplace_id,
+            content_reference_key=content_reference_key,
+        )
+        content_status = self.amazon_service.get_aplus_content_document(
+            marketplace_id=product.marketplace_id,
+            content_reference_key=content_reference_key,
+            included_data_set=["METADATA"],
         )
 
-    @staticmethod
-    def _amazon_module_type(module_type: str, *, has_image: bool) -> str:
-        mapping = {
-            "hero": "STANDARD_HEADER_IMAGE_TEXT" if has_image else "STANDARD_TEXT",
-            "feature": "STANDARD_SINGLE_IMAGE_HIGHLIGHTS" if has_image else "STANDARD_TEXT",
-            "comparison": "STANDARD_COMPARISON_TABLE",
-            "faq": "STANDARD_TEXT",
+        return {
+            "contentReferenceKey": content_reference_key,
+            "contentDocumentRequest": request_payload,
+            "assetPreparation": {
+                module_id: {
+                    "uploadDestinationId": prepared_asset.upload_destination_id,
+                    "width": prepared_asset.width_pixels,
+                    "height": prepared_asset.height_pixels,
+                    "assetId": prepared_asset.asset_id,
+                }
+                for module_id, prepared_asset in prepared_assets.items()
+            },
+            "validationResponse": validation_response,
+            "createContentDocumentResponse": create_response,
+            "asinRelationsResponse": asin_relations_response,
+            "approvalSubmissionResponse": approval_response,
+            "contentRecord": content_status.get("contentRecord"),
         }
-        return mapping.get(
-            module_type,
-            "STANDARD_SINGLE_IMAGE_HIGHLIGHTS" if has_image else "STANDARD_TEXT",
-        )
 
     @staticmethod
     def _marketplace_locale(marketplace_id: str) -> str:
@@ -286,125 +320,63 @@ class AplusService:
         }
         return mapping.get(marketplace_id, "en-US")
 
-    def _build_publishable_modules(
+    def _prepare_amazon_assets(
         self,
         *,
         product: Product,
         draft_payload: AplusDraftPayload,
-    ) -> list[dict[str, object]]:
-        content_modules: list[dict[str, object]] = []
-        errors: list[str] = []
-
-        for index, module in enumerate(draft_payload.modules, start=1):
-            try:
-                content_modules.append(
-                    self._build_publishable_module(
-                        product=product,
-                        module_index=index,
-                        module=module,
-                    )
-                )
-            except ValueError as exc:
-                errors.append(f"Module {index} ({module.module_type}): {exc}")
-
-        if errors:
-            raise ValueError(
-                "Draft contains non-publishable module content. " + " ".join(errors[:6])
+    ) -> dict[str, PreparedAmazonImageAsset]:
+        prepared_assets: dict[str, PreparedAmazonImageAsset] = {}
+        for module in draft_payload.modules:
+            if module.module_type not in {"hero", "feature"}:
+                continue
+            asset = self._resolve_module_publish_asset(product=product, module=module)
+            prepared_assets[module.module_id] = self._ensure_amazon_asset_ready(
+                asset=asset,
+                module=module,
+                marketplace_id=product.marketplace_id,
             )
+        return prepared_assets
 
-        return content_modules
-
-    def _build_publishable_module(
+    def _resolve_module_publish_asset(
         self,
         *,
         product: Product,
-        module_index: int,
         module: AplusModulePayload,
-    ) -> dict[str, object]:
-        resolved_image_url = self._resolve_module_image_url(
-            product=product,
-            module_index=module_index,
-            module=module,
-        )
-        has_image = resolved_image_url is not None
-        publishable_module: dict[str, object] = {
-            "contentModuleType": self._amazon_module_type(module.module_type, has_image=has_image),
-            "headline": module.headline,
-            "body": module.body,
-            "bullets": module.bullets,
-        }
-
-        if module.module_type == "comparison":
-            publishable_module["comparisonRows"] = [
-                self._parse_comparison_row(row) for row in module.bullets
-            ]
-
-        if has_image:
-            publishable_module["image"] = {
-                "assetUrl": resolved_image_url,
-                "altText": module.image_brief,
-            }
-            if module.overlay_text and self._module_supports_overlay(module.module_type):
-                publishable_module["overlayText"] = module.overlay_text
-        else:
-            publishable_module["imageBrief"] = module.image_brief
-
-        return publishable_module
-
-    def _resolve_module_image_url(
-        self,
-        *,
-        product: Product,
-        module_index: int,
-        module: AplusModulePayload,
-    ) -> str | None:
-        supports_image = self._module_supports_image(module.module_type)
-
-        if not supports_image:
-            if module.image_mode != "none":
-                raise ValueError("selected image mode is not supported for this module type.")
-            if module.overlay_text:
-                raise ValueError("overlay text is not publishable for this module type.")
-            return None
-
-        if module.image_mode == "none":
-            if module.overlay_text:
-                raise ValueError("overlay text requires a publishable image selection.")
-            return None
-
-        if module.image_mode == "generated":
-            if not module.generated_image_url:
-                raise ValueError("generated image is selected but no generated asset is available.")
-            self._ensure_publishable_media_url(
-                module.generated_image_url,
-                field_label=f"Module {module_index} generated image",
-            )
-            return module.generated_image_url
-
-        if module.image_mode == "uploaded":
-            if not module.uploaded_image_url:
-                raise ValueError("uploaded image is selected but no uploaded asset is available.")
-            self._ensure_publishable_media_url(
-                module.uploaded_image_url,
-                field_label=f"Module {module_index} uploaded image",
-            )
-            return module.uploaded_image_url
-
+    ) -> AplusAsset:
         if module.image_mode == "existing_asset":
             if not module.selected_asset_id:
-                raise ValueError("existing asset mode requires a selected asset.")
-            asset = self._get_publishable_asset(
+                raise ValueError("Existing asset mode requires a selected asset for Amazon publish.")
+            return self._get_publishable_asset(
                 product=product,
                 asset_id=module.selected_asset_id,
-                field_label=f"Module {module_index} existing asset",
+                field_label=f"Module '{module.headline}' existing asset",
             )
-            self._ensure_publishable_media_url(
-                asset.public_url,
-                field_label=f"Module {module_index} existing asset",
-            )
-            return asset.public_url
 
-        raise ValueError("unsupported image mode.")
+        if module.image_mode in {"generated", "uploaded"}:
+            if module.selected_asset_id:
+                return self._get_publishable_asset(
+                    product=product,
+                    asset_id=module.selected_asset_id,
+                    field_label=f"Module '{module.headline}' selected asset",
+                )
+
+            public_url = (
+                module.generated_image_url if module.image_mode == "generated" else module.uploaded_image_url
+            )
+            if not public_url:
+                raise ValueError(
+                    f"Module '{module.headline}' is missing its selected local image before Amazon publish."
+                )
+            return self._get_publishable_asset_by_public_url(
+                product=product,
+                public_url=public_url,
+                field_label=f"Module '{module.headline}' local asset",
+            )
+
+        raise ValueError(
+            f"Module '{module.headline}' requires an image because {module.module_type} is part of the supported Amazon publish subset."
+        )
 
     def _get_publishable_asset(
         self,
@@ -427,31 +399,127 @@ class AplusService:
             raise ValueError(f"{field_label} is outside the allowed product scope.")
         return asset
 
-    def _ensure_publishable_media_url(self, public_url: str, *, field_label: str) -> None:
-        url_prefix = f"{self.media_storage_service.url_prefix}/"
-        if not public_url.startswith(url_prefix):
-            raise ValueError(f"{field_label} must resolve to a locally stored media asset.")
+    def _get_publishable_asset_by_public_url(
+        self,
+        *,
+        product: Product,
+        public_url: str,
+        field_label: str,
+    ) -> AplusAsset:
+        from app.models.entities import AplusAsset
 
-        file_path = self.media_storage_service.resolve_public_url(public_url)
+        asset = self.db_session.execute(
+            select(AplusAsset)
+            .where(AplusAsset.public_url == public_url)
+            .where(or_(AplusAsset.product_id == product.id, AplusAsset.product_id.is_(None)))
+            .order_by(AplusAsset.created_at.desc())
+        ).scalar_one_or_none()
+        if asset is None:
+            raise ValueError(f"{field_label} could not be resolved to a stored A+ asset.")
+        return asset
+
+    def _ensure_amazon_asset_ready(
+        self,
+        *,
+        asset: AplusAsset,
+        module: AplusModulePayload,
+        marketplace_id: str,
+    ) -> PreparedAmazonImageAsset:
+        metadata = dict(asset.asset_metadata or {})
+        amazon_uploads = dict(metadata.get("amazon_uploads") or {})
+        cached_upload = amazon_uploads.get(marketplace_id)
+        if isinstance(cached_upload, dict) and cached_upload.get("upload_destination_id"):
+            return PreparedAmazonImageAsset(
+                upload_destination_id=str(cached_upload["upload_destination_id"]),
+                alt_text=module.image_brief.strip(),
+                width_pixels=int(cached_upload["width_pixels"]),
+                height_pixels=int(cached_upload["height_pixels"]),
+                asset_id=str(asset.id),
+            )
+
+        file_path = self.media_storage_service.resolve_public_url(asset.public_url)
         if not file_path.exists():
-            raise ValueError(f"{field_label} is missing from storage.")
+            raise ValueError(f"The selected asset for module '{module.headline}' is missing from local storage.")
 
-    @staticmethod
-    def _module_supports_image(module_type: str) -> bool:
-        return module_type in {"hero", "feature"}
+        content = file_path.read_bytes()
+        if len(content) > settings.aplus_upload_max_bytes:
+            raise ValueError(
+                f"The selected asset for module '{module.headline}' exceeds the configured Amazon upload size limit."
+            )
+        if asset.mime_type not in {"image/jpeg", "image/png"}:
+            raise ValueError(
+                f"Module '{module.headline}' uses {asset.mime_type}, but the supported Amazon publish subset currently accepts only JPEG and PNG images."
+            )
 
-    @staticmethod
-    def _module_supports_overlay(module_type: str) -> bool:
-        return module_type in {"hero", "feature"}
+        width_pixels, height_pixels = self._read_image_dimensions(
+            content=content,
+            expected_mime_type=asset.mime_type,
+            field_label=f"Module '{module.headline}' image",
+        )
+        content_md5 = b64encode(md5(content).digest()).decode("ascii")
+        upload_destination = self.amazon_service.create_aplus_upload_destination(
+            marketplace_id=marketplace_id,
+            content_md5=content_md5,
+            content_type=asset.mime_type,
+        )
+        upload_payload = upload_destination.get("payload") or {}
+        upload_destination_id = upload_payload.get("uploadDestinationId")
+        upload_url = upload_payload.get("url")
+        form_fields = upload_payload.get("headers") or {}
+        if not upload_destination_id or not upload_url:
+            raise ValueError("Amazon did not return a usable upload destination for the selected image asset.")
 
-    @staticmethod
-    def _parse_comparison_row(value: str) -> dict[str, str]:
-        parts = [part.strip() for part in value.split("|")]
-        return {
-            "criteria": parts[0] if len(parts) > 0 else "",
-            "thisProduct": parts[1] if len(parts) > 1 else "",
-            "genericAlternative": parts[2] if len(parts) > 2 else "",
+        self.amazon_service.upload_asset_to_destination(
+            url=str(upload_url),
+            form_fields={str(key): str(value) for key, value in form_fields.items()},
+            file_name=asset.file_name,
+            content=content,
+            content_type=asset.mime_type,
+        )
+
+        amazon_uploads[marketplace_id] = {
+            "upload_destination_id": str(upload_destination_id),
+            "width_pixels": width_pixels,
+            "height_pixels": height_pixels,
+            "mime_type": asset.mime_type,
+            "file_size_bytes": len(content),
+            "uploaded_at": self._now().isoformat(),
         }
+        metadata["amazon_uploads"] = amazon_uploads
+        asset.asset_metadata = metadata
+        self.db_session.flush()
+
+        return PreparedAmazonImageAsset(
+            upload_destination_id=str(upload_destination_id),
+            alt_text=module.image_brief.strip(),
+            width_pixels=width_pixels,
+            height_pixels=height_pixels,
+            asset_id=str(asset.id),
+        )
+
+    @staticmethod
+    def _read_image_dimensions(
+        *,
+        content: bytes,
+        expected_mime_type: str,
+        field_label: str,
+    ) -> tuple[int, int]:
+        try:
+            with Image.open(BytesIO(content)) as image:
+                detected_format = (image.format or "").upper()
+                width, height = image.size
+        except UnidentifiedImageError as exc:
+            raise ValueError(f"{field_label} is not a valid image file.") from exc
+
+        expected_formats = {
+            "image/jpeg": {"JPEG"},
+            "image/png": {"PNG"},
+        }
+        if detected_format not in expected_formats.get(expected_mime_type, set()):
+            raise ValueError(f"{field_label} does not match the expected MIME type {expected_mime_type}.")
+        if width <= 0 or height <= 0:
+            raise ValueError(f"{field_label} has invalid image dimensions.")
+        return width, height
 
     def _get_draft(self, draft_id: UUID) -> AplusDraft:
         from app.models.entities import AplusDraft

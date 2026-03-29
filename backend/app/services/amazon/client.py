@@ -62,3 +62,24 @@ class AmazonSpApiClient:
                 f"SP-API request failed with status {response.status_code}: {response.text}"
             )
         return response.json()
+
+    def upload_to_destination(
+        self,
+        *,
+        url: str,
+        form_fields: dict[str, Any],
+        file_name: str,
+        content: bytes,
+        content_type: str,
+    ) -> None:
+        response = self.http_client.post(
+            url,
+            data=form_fields,
+            files={"file": (file_name, content, content_type)},
+            headers={"user-agent": "amazon-seller-ops/0.1.0"},
+        )
+        if response.is_error:
+            logger.error("Amazon upload destination failed: %s %s", response.status_code, response.text)
+            raise AmazonRequestError(
+                f"Amazon upload destination request failed with status {response.status_code}: {response.text}"
+            )

@@ -64,6 +64,76 @@ class AmazonSpApiAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def create_aplus_upload_destination(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_md5: str,
+        content_type: str,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def upload_asset_to_destination(
+        self,
+        *,
+        url: str,
+        form_fields: dict[str, Any],
+        file_name: str,
+        content: bytes,
+        content_type: str,
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def validate_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        asin_set: list[str],
+        document_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        document_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def post_aplus_content_document_asin_relations(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        asin_set: list[str],
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def submit_aplus_content_document_for_approval(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        included_data_set: list[str],
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
     def process_notification_event(self, payload: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -205,6 +275,124 @@ class LiveAmazonSpApiAdapter(AmazonSpApiAdapter):
             "draft_content": draft_content,
         }
 
+    def create_aplus_upload_destination(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_md5: str,
+        content_type: str,
+    ) -> dict[str, Any]:
+        resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
+        return self.client.request(
+            "POST",
+            "/uploads/2020-11-01/uploadDestinations/aplus/2020-11-01/contentDocuments",
+            marketplace_id=resolved_marketplace_id,
+            params={
+                "marketplaceIds": resolved_marketplace_id,
+                "contentMD5": content_md5,
+                "contentType": content_type,
+            },
+        )
+
+    def upload_asset_to_destination(
+        self,
+        *,
+        url: str,
+        form_fields: dict[str, Any],
+        file_name: str,
+        content: bytes,
+        content_type: str,
+    ) -> None:
+        self.client.upload_to_destination(
+            url=url,
+            form_fields=form_fields,
+            file_name=file_name,
+            content=content,
+            content_type=content_type,
+        )
+
+    def validate_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        asin_set: list[str],
+        document_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
+        return self.client.request(
+            "POST",
+            "/aplus/2020-11-01/contentAsinValidations",
+            marketplace_id=resolved_marketplace_id,
+            params={
+                "marketplaceId": resolved_marketplace_id,
+                "asinSet": ",".join(asin_set),
+            },
+            json_body=document_request,
+        )
+
+    def create_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        document_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
+        return self.client.request(
+            "POST",
+            "/aplus/2020-11-01/contentDocuments",
+            marketplace_id=resolved_marketplace_id,
+            params={"marketplaceId": resolved_marketplace_id},
+            json_body=document_request,
+        )
+
+    def post_aplus_content_document_asin_relations(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        asin_set: list[str],
+    ) -> dict[str, Any]:
+        resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
+        return self.client.request(
+            "POST",
+            f"/aplus/2020-11-01/contentDocuments/{content_reference_key}/asins",
+            marketplace_id=resolved_marketplace_id,
+            params={"marketplaceId": resolved_marketplace_id},
+            json_body={"asinSet": asin_set},
+        )
+
+    def submit_aplus_content_document_for_approval(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+    ) -> dict[str, Any]:
+        resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
+        return self.client.request(
+            "POST",
+            f"/aplus/2020-11-01/contentDocuments/{content_reference_key}/approvalSubmissions",
+            marketplace_id=resolved_marketplace_id,
+            params={"marketplaceId": resolved_marketplace_id},
+        )
+
+    def get_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        included_data_set: list[str],
+    ) -> dict[str, Any]:
+        resolved_marketplace_id = marketplace_id or self.settings.marketplace_id
+        return self.client.request(
+            "GET",
+            f"/aplus/2020-11-01/contentDocuments/{content_reference_key}",
+            marketplace_id=resolved_marketplace_id,
+            params={
+                "marketplaceId": resolved_marketplace_id,
+                "includedDataSet": ",".join(included_data_set),
+            },
+        )
+
     def process_notification_event(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "source": "amazon_sp_api",
@@ -341,6 +529,90 @@ class MockAmazonSpApiAdapter(AmazonSpApiAdapter):
             "asin": asin,
             "marketplace_id": marketplace_id or self.settings.marketplace_id,
             "draft_content": draft_content,
+        }
+
+    def create_aplus_upload_destination(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_md5: str,
+        content_type: str,
+    ) -> dict[str, Any]:
+        return {
+            "payload": {
+                "uploadDestinationId": "mock-upload-destination",
+                "url": "https://example.com/mock-upload",
+                "headers": {
+                    "key": "mock/key",
+                    "policy": "mock-policy",
+                },
+            }
+        }
+
+    def upload_asset_to_destination(
+        self,
+        *,
+        url: str,
+        form_fields: dict[str, Any],
+        file_name: str,
+        content: bytes,
+        content_type: str,
+    ) -> None:
+        return None
+
+    def validate_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        asin_set: list[str],
+        document_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {"warnings": [], "errors": []}
+
+    def create_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        document_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {"warnings": [], "contentReferenceKey": "mock-content-reference"}
+
+    def post_aplus_content_document_asin_relations(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        asin_set: list[str],
+    ) -> dict[str, Any]:
+        return {"warnings": []}
+
+    def submit_aplus_content_document_for_approval(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+    ) -> dict[str, Any]:
+        return {"warnings": []}
+
+    def get_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        included_data_set: list[str],
+    ) -> dict[str, Any]:
+        return {
+            "warnings": [],
+            "contentRecord": {
+                "contentReferenceKey": content_reference_key,
+                "contentMetadata": {
+                    "name": "Mock A+ Content",
+                    "marketplaceId": marketplace_id or self.settings.marketplace_id,
+                    "status": "SUBMITTED",
+                    "badgeSet": [],
+                    "updateTime": "2026-03-29T00:00:00Z",
+                },
+            },
         }
 
     def process_notification_event(self, payload: dict[str, Any]) -> dict[str, Any]:
