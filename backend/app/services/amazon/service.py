@@ -119,3 +119,122 @@ class AmazonSpApiService:
             quantity=quantity,
             marketplace_id=marketplace_id,
         )
+
+    def create_aplus_upload_destination(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_md5: str,
+        content_type: str,
+    ) -> dict[str, Any]:
+        if not self._has_core_sp_api_credentials():
+            raise AmazonAuthorizationError(
+                "Live Amazon A+ publishing requires SP-API credentials and marketplace configuration."
+            )
+        return self.live_adapter.create_aplus_upload_destination(
+            marketplace_id=marketplace_id,
+            content_md5=content_md5,
+            content_type=content_type,
+        )
+
+    def upload_asset_to_destination(
+        self,
+        *,
+        url: str,
+        form_fields: dict[str, Any],
+        file_name: str,
+        content: bytes,
+        content_type: str,
+    ) -> None:
+        if not self._has_core_sp_api_credentials():
+            raise AmazonAuthorizationError(
+                "Live Amazon A+ publishing requires SP-API credentials and marketplace configuration."
+            )
+        self.live_adapter.upload_asset_to_destination(
+            url=url,
+            form_fields=form_fields,
+            file_name=file_name,
+            content=content,
+            content_type=content_type,
+        )
+
+    def validate_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        asin_set: list[str],
+        document_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not self._has_core_sp_api_credentials():
+            raise AmazonAuthorizationError(
+                "Live Amazon A+ publishing requires SP-API credentials and marketplace configuration."
+            )
+        return self.live_adapter.validate_aplus_content_document(
+            marketplace_id=marketplace_id,
+            asin_set=asin_set,
+            document_request=document_request,
+        )
+
+    def create_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        document_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not self._has_core_sp_api_credentials():
+            raise AmazonAuthorizationError(
+                "Live Amazon A+ publishing requires SP-API credentials and marketplace configuration."
+            )
+        return self.live_adapter.create_aplus_content_document(
+            marketplace_id=marketplace_id,
+            document_request=document_request,
+        )
+
+    def post_aplus_content_document_asin_relations(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        asin_set: list[str],
+    ) -> dict[str, Any]:
+        if not self._has_core_sp_api_credentials():
+            raise AmazonAuthorizationError(
+                "Live Amazon A+ publishing requires SP-API credentials and marketplace configuration."
+            )
+        return self.live_adapter.post_aplus_content_document_asin_relations(
+            marketplace_id=marketplace_id,
+            content_reference_key=content_reference_key,
+            asin_set=asin_set,
+        )
+
+    def submit_aplus_content_document_for_approval(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+    ) -> dict[str, Any]:
+        if not self._has_core_sp_api_credentials():
+            raise AmazonAuthorizationError(
+                "Live Amazon A+ publishing requires SP-API credentials and marketplace configuration."
+            )
+        return self.live_adapter.submit_aplus_content_document_for_approval(
+            marketplace_id=marketplace_id,
+            content_reference_key=content_reference_key,
+        )
+
+    def get_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        included_data_set: list[str],
+    ) -> dict[str, Any]:
+        if not self._has_core_sp_api_credentials():
+            raise AmazonAuthorizationError(
+                "Live Amazon A+ publishing requires SP-API credentials and marketplace configuration."
+            )
+        return self.live_adapter.get_aplus_content_document(
+            marketplace_id=marketplace_id,
+            content_reference_key=content_reference_key,
+            included_data_set=included_data_set,
+        )
