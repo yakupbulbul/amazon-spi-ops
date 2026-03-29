@@ -108,7 +108,7 @@ def queue_aplus_image_generation(
     image_service: AplusImageService = Depends(get_aplus_image_service),
 ) -> AplusDraftResponse:
     try:
-        draft = image_service.queue_image_generation(
+        draft, should_enqueue = image_service.queue_image_generation(
             draft_id=UUID(payload.draft_id),
             module_id=payload.module_id,
             image_prompt=payload.image_prompt,
@@ -116,7 +116,28 @@ def queue_aplus_image_generation(
             reference_asset_ids=payload.reference_asset_ids,
             requested_by=current_user,
         )
-        generate_aplus_module_image.send(payload.draft_id, payload.module_id, str(current_user.id))
+        if should_enqueue:
+            module = next(
+                item for item in draft.draft_payload.modules if item.module_id == payload.module_id
+            )
+            try:
+                generate_aplus_module_image.send(
+                    payload.draft_id,
+                    payload.module_id,
+                    module.image_request_fingerprint,
+                    str(current_user.id),
+                )
+            except Exception as exc:
+                image_service.mark_enqueue_failed(
+                    draft_id=UUID(payload.draft_id),
+                    module_id=payload.module_id,
+                    request_fingerprint=module.image_request_fingerprint or "",
+                    error_message=f"Unable to enqueue background image generation: {exc}",
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Unable to enqueue background image generation.",
+                ) from exc
         return draft
     except ValueError as exc:
         detail = str(exc)

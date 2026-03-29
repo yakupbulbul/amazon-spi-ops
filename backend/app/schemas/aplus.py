@@ -25,6 +25,7 @@ class AplusModulePayload(BaseModel):
     overlay_text: str | None = Field(default=None, max_length=160)
     image_status: Literal["idle", "queued", "generating", "completed", "failed"] = "idle"
     image_error_message: str | None = Field(default=None, max_length=1024)
+    image_request_fingerprint: str | None = Field(default=None, min_length=8, max_length=64)
 
 
 class AplusDraftPayload(BaseModel):
