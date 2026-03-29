@@ -26,6 +26,10 @@ class PreparedAmazonImageAsset:
     alt_text: str
     width_pixels: int
     height_pixels: int
+    crop_width_pixels: int
+    crop_height_pixels: int
+    crop_offset_x_pixels: int = 0
+    crop_offset_y_pixels: int = 0
     asset_id: str | None = None
 
 
@@ -52,8 +56,14 @@ class AmazonImageDimensions(BaseModel):
     height: AmazonIntegerWithUnits
 
 
+class AmazonImageOffsetSpecification(BaseModel):
+    x: AmazonIntegerWithUnits
+    y: AmazonIntegerWithUnits
+
+
 class AmazonImageCropSpecification(BaseModel):
     size: AmazonImageDimensions
+    offset: AmazonImageOffsetSpecification | None = None
 
 
 class AmazonImageComponent(BaseModel):
@@ -344,9 +354,13 @@ class AmazonContractMapper:
             altText=prepared_asset.alt_text,
             imageCropSpecification=AmazonImageCropSpecification(
                 size=AmazonImageDimensions(
-                    width=AmazonIntegerWithUnits(value=prepared_asset.width_pixels),
-                    height=AmazonIntegerWithUnits(value=prepared_asset.height_pixels),
-                )
+                    width=AmazonIntegerWithUnits(value=prepared_asset.crop_width_pixels),
+                    height=AmazonIntegerWithUnits(value=prepared_asset.crop_height_pixels),
+                ),
+                offset=AmazonImageOffsetSpecification(
+                    x=AmazonIntegerWithUnits(value=prepared_asset.crop_offset_x_pixels),
+                    y=AmazonIntegerWithUnits(value=prepared_asset.crop_offset_y_pixels),
+                ),
             ),
         )
 
@@ -393,3 +407,5 @@ class AmazonContractMapper:
             raise ValueError(
                 f"{label} must be at least {min_width} x {min_height} pixels for the supported Amazon module."
             )
+        if prepared_asset.crop_width_pixels <= 0 or prepared_asset.crop_height_pixels <= 0:
+            raise ValueError(f"{label} is missing a valid crop specification for Amazon publish.")
