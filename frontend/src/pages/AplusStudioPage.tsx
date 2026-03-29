@@ -34,10 +34,13 @@ import {
   getAplusDrafts,
   getLatestAplusPublishJob,
   getProducts,
+  improveAplusDraft,
   publishAplusDraft,
   uploadAplusAsset,
   type AplusAsset,
   type AplusDraftPayload,
+  type AplusImproveResponse,
+  type AplusImprovementCategory,
   type AplusPublishJobResponse,
   type AplusDraftResponse,
   type AplusLanguage,
@@ -73,6 +76,19 @@ function formatTimestamp(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatCategoryLabel(category: AplusImprovementCategory): string {
+  switch (category) {
+    case "structure":
+      return "Improve structure";
+    case "clarity":
+      return "Improve clarity";
+    case "differentiation":
+      return "Improve differentiation";
+    case "completeness":
+      return "Improve completeness";
+  }
 }
 
 function buildEmptyDraft(product?: ProductListItem | null): AplusDraftPayload {
@@ -171,6 +187,9 @@ export function AplusStudioPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [improvementPreview, setImprovementPreview] = useState<AplusImproveResponse | null>(null);
+  const [isImprovingCategory, setIsImprovingCategory] =
+    useState<AplusImprovementCategory | null>(null);
   const [expandedModules, setExpandedModules] = useState<number[]>([0]);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [assetLibraryError, setAssetLibraryError] = useState<string | null>(null);
@@ -430,6 +449,8 @@ export function AplusStudioPage() {
     setTargetLanguage(draft.target_language);
     setAutoTranslate(draft.auto_translate);
     setEditorDraft(getEditablePayload(draft));
+    setImprovementPreview(null);
+    setIsImprovingCategory(null);
     setExpandedModules([0]);
     setPublishResult(null);
     setLatestPublishJob(null);
@@ -465,6 +486,7 @@ export function AplusStudioPage() {
 
       upsertDraft(draft);
       selectDraft(draft);
+      setImprovementPreview(null);
       setStatusMessage(
         autoTranslate
           ? `Draft generated in ${formatLanguageLabel(sourceLanguage)} and translated into ${formatLanguageLabel(effectiveTargetLanguage)}.`
@@ -497,6 +519,7 @@ export function AplusStudioPage() {
 
       upsertDraft(draft);
       selectDraft(draft);
+      setImprovementPreview(null);
       if (draft.readiness_report.is_publish_ready) {
         setStatusMessage(
           "Draft validated and marked publish-ready. The current payload can now be prepared for publish.",
@@ -529,6 +552,7 @@ export function AplusStudioPage() {
       const response = await publishAplusDraft(token, selectedDraftId);
       upsertDraft(response.draft);
       selectDraft(response.draft);
+      setImprovementPreview(null);
       setLatestPublishJob(response.publish_job);
       setPublishResult(response);
       setStatusMessage(response.message);
@@ -551,6 +575,8 @@ export function AplusStudioPage() {
     initializedProductIdRef.current = null;
     setLatestPublishJob(null);
     setPublishResult(null);
+    setImprovementPreview(null);
+    setIsImprovingCategory(null);
     setStatusMessage(null);
     setError(null);
     const nextProduct = products.find((product) => product.id === productId) ?? null;
@@ -580,6 +606,52 @@ export function AplusStudioPage() {
     if (targetLanguage === sourceLanguage) {
       setTargetLanguage(getDefaultTargetLanguage(sourceLanguage));
     }
+  }
+
+  async function handleImprove(category: AplusImprovementCategory) {
+    if (!token || !selectedDraftId || !editorDraft) {
+      setError("Select or generate a draft before requesting targeted improvements.");
+      return;
+    }
+
+    setIsImprovingCategory(category);
+    setError(null);
+    setStatusMessage(null);
+
+    try {
+      const response = await improveAplusDraft(token, {
+        draft_id: selectedDraftId,
+        category,
+        draft_payload: editorDraft,
+      });
+      setImprovementPreview(response);
+      setStatusMessage(`Improvement preview prepared for ${category}. Review the before/after changes below.`);
+    } catch (improveError) {
+      setError(
+        improveError instanceof Error
+          ? improveError.message
+          : "Unable to prepare the targeted draft improvement.",
+      );
+    } finally {
+      setIsImprovingCategory(null);
+    }
+  }
+
+  function acceptImprovementPreview() {
+    if (!improvementPreview) {
+      return;
+    }
+
+    setEditorDraft(improvementPreview.improved_payload);
+    setStatusMessage(
+      `${formatCategoryLabel(improvementPreview.category)} applied to the working draft. Validate when you are ready to refresh the stored score.`,
+    );
+    setImprovementPreview(null);
+  }
+
+  function rejectImprovementPreview() {
+    setImprovementPreview(null);
+    setStatusMessage("Improvement preview discarded. The working draft was not changed.");
   }
 
   function updateModule(
@@ -1129,8 +1201,106 @@ export function AplusStudioPage() {
               <AplusOptimizationPanel
                 draft={selectedDraft}
                 hasUnsavedChanges={hasUnsavedChanges}
+                onImprove={(category) => void handleImprove(category)}
+                improvingCategory={isImprovingCategory}
               />
             </div>
+
+            {improvementPreview ? (
+              <article className="mt-5 rounded-[1.75rem] border border-emerald-400/20 bg-emerald-500/10 p-5 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.28em] text-emerald-200/80">
+                      Improvement preview
+                    </p>
+                    <h4 className="mt-2 text-xl font-semibold text-white">
+                      {formatCategoryLabel(improvementPreview.category)}
+                    </h4>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-emerald-50/90">
+                      {improvementPreview.summary}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={rejectImprovementPreview}
+                      className="rounded-[1.25rem] border border-white/10 bg-white/10 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/15"
+                    >
+                      Reject changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={acceptImprovementPreview}
+                      className="rounded-[1.25rem] bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-slate-100"
+                    >
+                      Accept changes
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                  <div className="space-y-3 rounded-[1.25rem] border border-white/10 bg-slate-950/35 p-4">
+                    <p className="text-xs uppercase tracking-[0.22em] text-emerald-100/70">
+                      Issues addressed
+                    </p>
+                    {improvementPreview.issues.length === 0 ? (
+                      <p className="text-sm leading-6 text-slate-200">
+                        No explicit issues were returned, but the targeted rewrite still focused on this category.
+                      </p>
+                    ) : (
+                      improvementPreview.issues.map((issue) => (
+                        <div
+                          key={`${issue.section}-${issue.title}-${issue.message}`}
+                          className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-3 py-3"
+                        >
+                          <p className="text-sm font-medium text-white">{issue.title}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
+                            {issue.section}
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-slate-300">{issue.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="space-y-3 rounded-[1.25rem] border border-white/10 bg-slate-950/35 p-4">
+                    <p className="text-xs uppercase tracking-[0.22em] text-emerald-100/70">
+                      Before / after
+                    </p>
+                    <div className="max-h-[30rem] space-y-3 overflow-y-auto pr-1">
+                      {improvementPreview.changes.length === 0 ? (
+                        <p className="text-sm leading-6 text-slate-200">
+                          No shopper-facing text changed in this pass.
+                        </p>
+                      ) : (
+                        improvementPreview.changes.map((change) => (
+                          <div
+                            key={change.path}
+                            className="rounded-[1rem] border border-white/10 bg-white/[0.04] p-4"
+                          >
+                            <p className="text-sm font-medium text-white">{change.label}</p>
+                            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                              <div className="rounded-[0.9rem] border border-white/10 bg-slate-950/60 px-3 py-3">
+                                <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Before</p>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">
+                                  {change.before}
+                                </p>
+                              </div>
+                              <div className="rounded-[0.9rem] border border-emerald-400/15 bg-emerald-500/10 px-3 py-3">
+                                <p className="text-xs uppercase tracking-[0.16em] text-emerald-100/70">After</p>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white">
+                                  {change.after}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ) : null}
 
             {!editorDraft ? (
               <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm leading-6 text-slate-400">

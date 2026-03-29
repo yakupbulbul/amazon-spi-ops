@@ -171,6 +171,11 @@ export type AplusDraftPayload = {
 };
 
 export type AplusLanguage = "de-DE" | "en-US" | "en-GB" | "fr-FR" | "it-IT" | "es-ES";
+export type AplusImprovementCategory =
+  | "structure"
+  | "clarity"
+  | "differentiation"
+  | "completeness";
 
 export type AplusReadinessIssue = {
   level: "error" | "warning";
@@ -211,6 +216,21 @@ export type AplusOptimizationReport = {
   critical_issues: AplusOptimizationSuggestion[];
   warnings: AplusOptimizationSuggestion[];
   section_insights: AplusOptimizationSectionInsight[];
+};
+
+export type AplusImprovementChange = {
+  path: string;
+  label: string;
+  before: string;
+  after: string;
+};
+
+export type AplusImproveResponse = {
+  category: AplusImprovementCategory;
+  summary: string;
+  issues: AplusOptimizationSuggestion[];
+  improved_payload: AplusDraftPayload;
+  changes: AplusImprovementChange[];
 };
 
 export type AplusAsset = {
@@ -523,6 +543,24 @@ export async function validateAplusDraft(
   payload: { draft_id: string; draft_payload: AplusDraftPayload },
 ): Promise<AplusDraftResponse> {
   return apiRequest<AplusDraftResponse>("/aplus/validate", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function improveAplusDraft(
+  token: string,
+  payload: {
+    draft_id: string;
+    category: AplusImprovementCategory;
+    draft_payload: AplusDraftPayload;
+  },
+): Promise<AplusImproveResponse> {
+  return apiRequest<AplusImproveResponse>("/aplus/improve", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
