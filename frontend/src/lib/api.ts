@@ -331,6 +331,101 @@ export type SlackTestResponse = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
+type ApiErrorBody = {
+  detail?: unknown;
+  message?: unknown;
+  errors?: unknown;
+};
+
+function normalizeApiErrorText(value: unknown): string | null {
+  if (typeof value === "string") {
+    const message = value.trim();
+    return message.length > 0 ? message : null;
+  }
+
+  if (Array.isArray(value)) {
+    const messages = Array.from(
+      new Set(
+        value
+          .map((item) => normalizeApiErrorEntry(item))
+          .filter((item): item is string => Boolean(item)),
+      ),
+    );
+
+    if (messages.length === 0) {
+      return null;
+    }
+
+    if (messages.length === 1) {
+      return messages[0];
+    }
+
+    return messages.map((message, index) => `${index + 1}. ${message}`).join("\n");
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const issueMessage = normalizeApiErrorEntry(value);
+    if (
+      issueMessage &&
+      ("loc" in record || "msg" in record || "reason" in record || "error" in record)
+    ) {
+      return issueMessage;
+    }
+
+    const directMessage =
+      normalizeApiErrorText(record.detail) ??
+      normalizeApiErrorText(record.message) ??
+      normalizeApiErrorText(record.errors);
+    if (directMessage) {
+      return directMessage;
+    }
+
+    const nestedMessages = Object.values(record)
+      .map((item) => normalizeApiErrorText(item))
+      .filter((item): item is string => Boolean(item));
+
+    if (nestedMessages.length === 0) {
+      return null;
+    }
+
+    return Array.from(new Set(nestedMessages)).join("\n");
+  }
+
+  return null;
+}
+
+function normalizeApiErrorEntry(entry: unknown): string | null {
+  if (typeof entry === "string") {
+    return normalizeApiErrorText(entry);
+  }
+
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const record = entry as Record<string, unknown>;
+  const message =
+    normalizeApiErrorText(record.msg) ??
+    normalizeApiErrorText(record.message) ??
+    normalizeApiErrorText(record.reason) ??
+    normalizeApiErrorText(record.error) ??
+    normalizeApiErrorText(record.detail);
+
+  const location = Array.isArray(record.loc)
+    ? record.loc
+        .map((segment) => String(segment))
+        .filter((segment) => segment !== "body")
+        .join(" > ")
+    : null;
+
+  if (location && message) {
+    return `${location}: ${message}`;
+  }
+
+  return message;
+}
+
 async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
@@ -346,10 +441,16 @@ async function apiRequest<T>(
   if (!response.ok) {
     let detail = `Request failed with status ${response.status}`;
     try {
-      const body = (await response.json()) as { detail?: string };
-      if (body.detail) {
-        detail = body.detail;
+      const body = (await response.json()) as ApiErrorBody;
+      const normalizedMessage = normalizeApiErrorText(body);
+      if (normalizedMessage) {
+        detail = normalizedMessage;
       }
+      console.error("API request failed", {
+        path,
+        status: response.status,
+        body,
+      });
     } catch {
       // ignore JSON parsing errors and keep the default message
     }

@@ -917,7 +917,7 @@ export function AplusStudioPage() {
       {error ? (
         <section className="flex items-start gap-3 rounded-[1.5rem] border border-rose-400/20 bg-rose-500/10 px-5 py-4 text-sm text-rose-100">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{error}</span>
+          <div className="whitespace-pre-line leading-6">{error}</div>
         </section>
       ) : null}
 
