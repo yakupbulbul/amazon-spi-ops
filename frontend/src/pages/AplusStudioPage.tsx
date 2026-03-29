@@ -8,7 +8,7 @@ import {
   Plus,
   Sparkles,
 } from "lucide-react";
-import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 
 import { AplusModuleEditorCard } from "../components/aplus/AplusModuleEditorCard";
 import { AplusOptimizationPanel } from "../components/aplus/AplusOptimizationPanel";
@@ -179,6 +179,8 @@ export function AplusStudioPage() {
   >({});
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const hasBootstrappedStudioRef = useRef(false);
+  const initializedProductIdRef = useRef<string | null>(null);
 
   const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? null;
   const selectedProduct =
@@ -227,71 +229,80 @@ export function AplusStudioPage() {
   const hasPendingPublishReview =
     latestPublishJob?.status === "submitted" || latestPublishJob?.status === "in_review";
 
-  const loadStudioData = useEffectEvent(async ({ cancelled = false }: { cancelled?: boolean } = {}) => {
-    if (!token) {
-      return;
-    }
+  useEffect(() => {
+    let cancelled = false;
 
-    try {
-      const [productsResponse, draftsResponse] = await Promise.all([
-        getProducts(token),
-        getAplusDrafts(token),
-      ]);
-
-      if (cancelled) {
+    async function loadStudioData() {
+      if (!token) {
         return;
       }
 
-      startTransition(() => {
-        setProducts(productsResponse.items);
-        setDrafts(draftsResponse.items);
-        setError(null);
-      });
+      try {
+        const [productsResponse, draftsResponse] = await Promise.all([
+          getProducts(token),
+          getAplusDrafts(token),
+        ]);
 
-      if (!selectedProductId && productsResponse.items[0]) {
-        setSelectedProductId(productsResponse.items[0].id);
-      }
+        if (cancelled) {
+          return;
+        }
 
-      if (!selectedDraftId && draftsResponse.items[0]) {
-        const newestDraft = draftsResponse.items[0];
-        setSelectedDraftId(newestDraft.id);
-        setSelectedProductId(newestDraft.product_id);
-        setBrandTone(newestDraft.brand_tone ?? "");
-        setPositioning(newestDraft.positioning ?? "");
-        setSourceLanguage(newestDraft.source_language);
-        setTargetLanguage(newestDraft.target_language);
-        setAutoTranslate(newestDraft.auto_translate);
-        setEditorDraft(getEditablePayload(newestDraft));
-      } else if (!draftsResponse.items.length && !editorDraft) {
-        setEditorDraft(buildEmptyDraft(productsResponse.items[0] ?? null));
-      }
-    } catch (loadError) {
-      if (!cancelled) {
-        setError(loadError instanceof Error ? loadError.message : "Unable to load A+ Studio.");
-      }
-    } finally {
-      if (!cancelled) {
-        setIsLoading(false);
+        startTransition(() => {
+          setProducts(productsResponse.items);
+          setDrafts(draftsResponse.items);
+          setError(null);
+        });
+
+        if (!hasBootstrappedStudioRef.current) {
+          hasBootstrappedStudioRef.current = true;
+
+          if (draftsResponse.items[0]) {
+            const newestDraft = draftsResponse.items[0];
+            initializedProductIdRef.current = newestDraft.product_id;
+            setSelectedDraftId(newestDraft.id);
+            setSelectedProductId(newestDraft.product_id);
+            setBrandTone(newestDraft.brand_tone ?? "");
+            setPositioning(newestDraft.positioning ?? "");
+            setSourceLanguage(newestDraft.source_language);
+            setTargetLanguage(newestDraft.target_language);
+            setAutoTranslate(newestDraft.auto_translate);
+            setEditorDraft(getEditablePayload(newestDraft));
+          } else if (productsResponse.items[0]) {
+            initializedProductIdRef.current = productsResponse.items[0].id;
+            setSelectedProductId(productsResponse.items[0].id);
+            setEditorDraft(buildEmptyDraft(productsResponse.items[0]));
+          }
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load A+ Studio.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     }
-  });
 
-  useEffect(() => {
-    let cancelled = false;
-    void loadStudioData({ cancelled });
+    void loadStudioData();
     return () => {
       cancelled = true;
     };
-  }, [loadStudioData, token]);
+  }, [token]);
 
   useEffect(() => {
     if (!selectedProductId || selectedDraftId) {
       return;
     }
 
+    if (initializedProductIdRef.current === selectedProductId && editorDraft) {
+      return;
+    }
+
     const activeProduct = products.find((product) => product.id === selectedProductId) ?? null;
+    initializedProductIdRef.current = selectedProductId;
     setEditorDraft(buildEmptyDraft(activeProduct));
-  }, [products, selectedDraftId, selectedProductId]);
+  }, [editorDraft, products, selectedDraftId, selectedProductId]);
 
   useEffect(() => {
     if (!token || !selectedProductId) {
@@ -410,6 +421,7 @@ export function AplusStudioPage() {
   }
 
   function selectDraft(draft: AplusDraftResponse) {
+    initializedProductIdRef.current = draft.product_id;
     setSelectedDraftId(draft.id);
     setSelectedProductId(draft.product_id);
     setBrandTone(draft.brand_tone ?? "");
@@ -536,6 +548,7 @@ export function AplusStudioPage() {
 
     setSelectedProductId(productId);
     setSelectedDraftId(null);
+    initializedProductIdRef.current = null;
     setLatestPublishJob(null);
     setPublishResult(null);
     setStatusMessage(null);
