@@ -146,7 +146,15 @@ class OpenAiAplusService:
         if not isinstance(content, str) or not content.strip():
             raise ValueError("OpenAI did not return translated A+ draft content.")
 
-        return AplusDraftPayload.model_validate_json(content)
+        try:
+            translated_payload = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError("OpenAI returned invalid JSON for translated A+ draft content.") from exc
+
+        return self._merge_translated_payload(
+            original_payload=draft_payload,
+            translated_payload=translated_payload,
+        )
 
     @staticmethod
     def _format_product_summary(product_context: dict[str, Any]) -> str:
@@ -410,7 +418,56 @@ class OpenAiAplusService:
         for key in ["headline", "subheadline", "brand_story", "key_features", "modules", "compliance_notes"]:
             translated_payload[key] = translate_text(translated_payload[key])
 
-        return AplusDraftPayload.model_validate(translated_payload)
+        return OpenAiAplusService._merge_translated_payload(
+            original_payload=draft_payload,
+            translated_payload=translated_payload,
+        )
+
+    @staticmethod
+    def _merge_translated_payload(
+        *,
+        original_payload: AplusDraftPayload,
+        translated_payload: dict[str, Any],
+    ) -> AplusDraftPayload:
+        merged_payload = original_payload.model_dump(mode="json")
+        translated_modules = translated_payload.get("modules", [])
+        translated_by_id = {
+            module.get("module_id"): module
+            for module in translated_modules
+            if isinstance(module, dict) and isinstance(module.get("module_id"), str)
+        }
+
+        for field in ["headline", "subheadline", "brand_story"]:
+            value = translated_payload.get(field)
+            if isinstance(value, str) and value.strip():
+                merged_payload[field] = value
+
+        key_features = translated_payload.get("key_features")
+        if isinstance(key_features, list) and all(isinstance(item, str) for item in key_features):
+            merged_payload["key_features"] = key_features
+
+        original_modules = merged_payload.get("modules", [])
+        for index, original_module in enumerate(original_modules):
+            if not isinstance(original_module, dict):
+                continue
+
+            translated_module = translated_by_id.get(original_module.get("module_id"))
+            if translated_module is None and index < len(translated_modules):
+                candidate = translated_modules[index]
+                translated_module = candidate if isinstance(candidate, dict) else None
+            if translated_module is None:
+                continue
+
+            for field in ["headline", "body", "image_brief"]:
+                value = translated_module.get(field)
+                if isinstance(value, str) and value.strip():
+                    original_module[field] = value
+
+            bullets = translated_module.get("bullets")
+            if isinstance(bullets, list) and all(isinstance(item, str) for item in bullets):
+                original_module["bullets"] = bullets
+
+        return AplusDraftPayload.model_validate(merged_payload)
 
     @staticmethod
     def _mock_headline_pack(*, title: str, source_language: str) -> tuple[str, str]:
