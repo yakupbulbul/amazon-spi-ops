@@ -89,6 +89,49 @@ def build_aplus_readiness_report(
                 field_label=f"Module {index} image",
                 message="AI-generated imagery requires human review before publish.",
             )
+        if module.module_type not in {"hero", "feature"}:
+            if module.image_mode != "none":
+                add_issue(
+                    level="error",
+                    code="unsupported_module_image",
+                    field_label=f"Module {index} image",
+                    message="This module type does not support publishable images in the current Amazon mapping.",
+                )
+            if module.overlay_text:
+                add_issue(
+                    level="error",
+                    code="unsupported_overlay",
+                    field_label=f"Module {index} overlay",
+                    message="Overlay text is only publishable on hero and feature modules with an image.",
+                )
+        elif module.image_mode == "generated" and not module.generated_image_url:
+            add_issue(
+                level="error",
+                code="missing_generated_image",
+                field_label=f"Module {index} image",
+                message="Generated image mode is selected, but no generated image is available yet.",
+            )
+        elif module.image_mode == "uploaded" and not module.uploaded_image_url:
+            add_issue(
+                level="error",
+                code="missing_uploaded_image",
+                field_label=f"Module {index} image",
+                message="Uploaded image mode is selected, but no uploaded image has been attached.",
+            )
+        elif module.image_mode == "existing_asset" and not module.selected_asset_id:
+            add_issue(
+                level="error",
+                code="missing_existing_asset",
+                field_label=f"Module {index} image",
+                message="Existing asset mode is selected, but no asset has been chosen.",
+            )
+        elif module.image_mode == "none" and module.overlay_text:
+            add_issue(
+                level="error",
+                code="overlay_without_image",
+                field_label=f"Module {index} overlay",
+                message="Overlay text requires a publishable image selection for this module.",
+            )
 
     for field_label, text, warning_limit, error_limit in text_rules:
         text_length = len(text.strip())
