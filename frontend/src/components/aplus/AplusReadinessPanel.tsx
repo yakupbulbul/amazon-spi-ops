@@ -46,11 +46,11 @@ export function AplusReadinessPanel({
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Publish readiness</p>
           <h4 className="mt-2 text-lg font-semibold text-white">
-            {readiness.is_publish_ready ? "Ready for publish preview" : "Needs review before publish"}
+            {readiness.is_publish_ready ? "Ready for Amazon submit" : "Needs review before publish"}
           </h4>
           <p className="mt-2 text-sm leading-6 text-slate-400">
             Amazon-facing checks look for blocking copy issues, weak sections, missing structure, and
-            verbose modules before payload preparation.
+            verbose modules before the real SP-API submit flow.
           </p>
         </div>
 
@@ -90,7 +90,7 @@ export function AplusReadinessPanel({
         <div className="space-y-4">
           <IssueList
             title="Blocking issues"
-            emptyMessage="No blocking issues found. This validated draft is safe to prepare for publish."
+            emptyMessage="No blocking issues found. This validated draft is safe to submit in the current Amazon subset."
             icon={AlertTriangle}
             tone="danger"
             items={readiness.blocking_errors.map((issue) => ({
