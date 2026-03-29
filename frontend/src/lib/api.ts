@@ -269,6 +269,8 @@ export type AplusDraftResponse = {
   product_asin: string;
   product_title: string;
   marketplace_id: string;
+  variant_group_id: string;
+  variant_role: "original" | "translated";
   status: string;
   brand_tone: string | null;
   positioning: string | null;
@@ -561,6 +563,20 @@ export async function improveAplusDraft(
   },
 ): Promise<AplusImproveResponse> {
   return apiRequest<AplusImproveResponse>("/aplus/improve", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function saveAplusDraft(
+  token: string,
+  payload: { draft_id: string; draft_payload: AplusDraftPayload },
+): Promise<AplusDraftResponse> {
+  return apiRequest<AplusDraftResponse>("/aplus/save", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
