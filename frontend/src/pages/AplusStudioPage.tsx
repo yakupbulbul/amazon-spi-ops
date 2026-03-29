@@ -58,12 +58,6 @@ const moduleLabels: Record<AplusModulePayload["module_type"], string> = {
   faq: "FAQ",
 };
 
-const defaultModuleOrder: AplusModulePayload["module_type"][] = [
-  "hero",
-  "feature",
-  "faq",
-];
-
 function createModuleId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID().replaceAll("-", "");
@@ -91,46 +85,21 @@ function formatCategoryLabel(category: AplusImprovementCategory): string {
   }
 }
 
-function buildEmptyDraft(product?: ProductListItem | null): AplusDraftPayload {
-  const brandLabel = product?.brand ?? "Brand";
-  const titleLabel = product?.title ?? "Product";
+function buildDefaultBrandTone(product?: ProductListItem | null): string {
+  if (product?.brand) {
+    return `${product.brand} should sound clear, benefit-led, and marketplace-safe.`;
+  }
 
-  return {
-    headline: `${brandLabel} for ${titleLabel}`,
-    subheadline: "Structured A+ story prepared for marketplace review.",
-    brand_story:
-      "Summarize the brand angle, core product context, and any grounded differentiators you want the editorial review to protect.",
-    key_features: [
-      "State the most important product feature",
-      "Call out the strongest practical benefit",
-      "Add one marketplace-safe proof point",
-    ],
-    modules: defaultModuleOrder.map((moduleType, index) => ({
-      module_id: createModuleId(),
-      module_type: moduleType,
-      headline: `${moduleLabels[moduleType]} module ${index + 1}`,
-      body: "Write concise, factual module copy that stays aligned with the live listing details.",
-      bullets: [
-        "Keep claims specific and verifiable",
-        "Prioritize shopper clarity over hype",
-      ],
-      image_brief: "Describe the supporting image direction for the creative team.",
-      image_mode: "none",
-      image_prompt: null,
-      generated_image_url: null,
-      uploaded_image_url: null,
-      selected_asset_id: null,
-      reference_asset_ids: [],
-      overlay_text: null,
-      image_status: "idle",
-      image_error_message: null,
-      image_request_fingerprint: null,
-    })),
-    compliance_notes: [
-      "Verify every claim against approved listing attributes before publishing.",
-      "Replace image briefs with approved creative references during final review.",
-    ],
-  };
+  return "Clear, benefit-led, and marketplace-safe.";
+}
+
+function buildDefaultPositioning(product?: ProductListItem | null): string {
+  if (!product) {
+    return "Explain the target shopper, the main usage context, and one grounded purchase reason.";
+  }
+
+  const brandPart = product.brand ? `${product.brand} ` : "";
+  return `Focus on the shopper for ${brandPart}${product.title}, the everyday usage context, and the practical advantage that matters most before purchase.`;
 }
 
 function joinLines(items: string[]): string {
@@ -199,7 +168,6 @@ export function AplusStudioPage() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
   const hasBootstrappedStudioRef = useRef(false);
-  const initializedProductIdRef = useRef<string | null>(null);
 
   const selectedDraft = drafts.find((draft) => draft.id === selectedDraftId) ?? null;
   const selectedProduct =
@@ -216,6 +184,7 @@ export function AplusStudioPage() {
     editorDraft !== null &&
     JSON.stringify(editorDraft) !== JSON.stringify(selectedDraftPayload);
   const publishReady = selectedDraft?.readiness_report.is_publish_ready ?? false;
+  const hasGeneratedDraft = selectedDraft !== null && editorDraft !== null;
   const unsupportedModuleCount =
     editorDraft?.modules.filter((module) => !moduleIsRealPublishSupported(module.module_type)).length ??
     0;
@@ -277,7 +246,6 @@ export function AplusStudioPage() {
 
           if (draftsResponse.items[0]) {
             const newestDraft = draftsResponse.items[0];
-            initializedProductIdRef.current = newestDraft.product_id;
             setSelectedDraftId(newestDraft.id);
             setSelectedProductId(newestDraft.product_id);
             setBrandTone(newestDraft.brand_tone ?? "");
@@ -287,9 +255,11 @@ export function AplusStudioPage() {
             setAutoTranslate(newestDraft.auto_translate);
             setEditorDraft(getEditablePayload(newestDraft));
           } else if (productsResponse.items[0]) {
-            initializedProductIdRef.current = productsResponse.items[0].id;
-            setSelectedProductId(productsResponse.items[0].id);
-            setEditorDraft(buildEmptyDraft(productsResponse.items[0]));
+            const firstProduct = productsResponse.items[0];
+            setSelectedProductId(firstProduct.id);
+            setBrandTone(buildDefaultBrandTone(firstProduct));
+            setPositioning(buildDefaultPositioning(firstProduct));
+            setEditorDraft(null);
           }
         }
       } catch (loadError) {
@@ -308,20 +278,6 @@ export function AplusStudioPage() {
       cancelled = true;
     };
   }, [token]);
-
-  useEffect(() => {
-    if (!selectedProductId || selectedDraftId) {
-      return;
-    }
-
-    if (initializedProductIdRef.current === selectedProductId && editorDraft) {
-      return;
-    }
-
-    const activeProduct = products.find((product) => product.id === selectedProductId) ?? null;
-    initializedProductIdRef.current = selectedProductId;
-    setEditorDraft(buildEmptyDraft(activeProduct));
-  }, [editorDraft, products, selectedDraftId, selectedProductId]);
 
   useEffect(() => {
     if (!token || !selectedProductId) {
@@ -440,7 +396,6 @@ export function AplusStudioPage() {
   }
 
   function selectDraft(draft: AplusDraftResponse) {
-    initializedProductIdRef.current = draft.product_id;
     setSelectedDraftId(draft.id);
     setSelectedProductId(draft.product_id);
     setBrandTone(draft.brand_tone ?? "");
@@ -477,8 +432,8 @@ export function AplusStudioPage() {
     try {
       const draft = await generateAplusDraft(token, {
         product_id: selectedProductId,
-        brand_tone: brandTone || undefined,
-        positioning: positioning || undefined,
+        brand_tone: brandTone.trim() || buildDefaultBrandTone(selectedProduct),
+        positioning: positioning.trim() || buildDefaultPositioning(selectedProduct),
         source_language: sourceLanguage,
         target_language: effectiveTargetLanguage,
         auto_translate: autoTranslate,
@@ -570,17 +525,18 @@ export function AplusStudioPage() {
       return;
     }
 
+    const nextProduct = products.find((product) => product.id === productId) ?? null;
     setSelectedProductId(productId);
     setSelectedDraftId(null);
-    initializedProductIdRef.current = null;
     setLatestPublishJob(null);
     setPublishResult(null);
     setImprovementPreview(null);
     setIsImprovingCategory(null);
     setStatusMessage(null);
     setError(null);
-    const nextProduct = products.find((product) => product.id === productId) ?? null;
-    setEditorDraft(buildEmptyDraft(nextProduct));
+    setBrandTone(buildDefaultBrandTone(nextProduct));
+    setPositioning(buildDefaultPositioning(nextProduct));
+    setEditorDraft(null);
     setExpandedModules([0]);
   }
 
@@ -915,10 +871,10 @@ export function AplusStudioPage() {
             <div className="flex items-center gap-3">
               <Sparkles className="h-5 w-5 text-sky-200" />
               <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Prompt controls</p>
+                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Stage 1</p>
                 <h3 className="mt-1 text-xl font-semibold text-white">Generate draft</h3>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Pick the product, choose the language flow, and generate a structured draft.
+                  Only provide the minimum guidance. The AI will generate the headline, story, features, compliance notes, and content modules.
                 </p>
               </div>
             </div>
@@ -1114,8 +1070,9 @@ export function AplusStudioPage() {
                   {selectedDraft ? selectedDraft.product_title : "Draft editor"}
                 </h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-                  Edit the structured fields directly. Validation persists the edited payload, and the
-                  real publish action submits only the currently supported Amazon subset.
+                  {hasGeneratedDraft
+                    ? "Review and refine the generated A+ draft. Validation persists the edited payload, and the real publish action submits only the currently supported Amazon subset."
+                    : "Stage 2 starts after generation. Once the AI creates a draft, you can review the generated headline, story, features, modules, optimization score, and publish readiness here."}
                 </p>
                 <div className="mt-4 rounded-[1.25rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
                   Real Amazon publish currently supports hero, feature, and faq modules only. Hero and
@@ -1129,9 +1086,11 @@ export function AplusStudioPage() {
                     them before using the real Amazon publish action.
                   </div>
                 ) : null}
-                <div className="mt-4">
-                  <AplusScoreBadge score={optimizationScore} />
-                </div>
+                {hasGeneratedDraft ? (
+                  <div className="mt-4">
+                    <AplusScoreBadge score={optimizationScore} />
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap gap-3">
@@ -1171,40 +1130,44 @@ export function AplusStudioPage() {
               </div>
             </div>
 
-              <div className="mt-5">
-              <DraftMetadataBar
-                draft={selectedDraft}
-                product={selectedProduct}
-                sourceLanguage={generationSourceLanguage}
-                targetLanguage={generationTargetLanguage}
-                autoTranslate={generationAutoTranslate}
-                formatTimestamp={formatTimestamp}
-              />
-            </div>
+              {hasGeneratedDraft ? (
+                <>
+                  <div className="mt-5">
+                    <DraftMetadataBar
+                      draft={selectedDraft}
+                      product={selectedProduct}
+                      sourceLanguage={generationSourceLanguage}
+                      targetLanguage={generationTargetLanguage}
+                      autoTranslate={generationAutoTranslate}
+                      formatTimestamp={formatTimestamp}
+                    />
+                  </div>
 
-            <div className="mt-5">
-              <AplusReadinessPanel
-                draft={selectedDraft}
-                product={selectedProduct}
-                hasUnsavedChanges={hasUnsavedChanges}
-              />
-            </div>
+                  <div className="mt-5">
+                    <AplusReadinessPanel
+                      draft={selectedDraft}
+                      product={selectedProduct}
+                      hasUnsavedChanges={hasUnsavedChanges}
+                    />
+                  </div>
 
-            <div className="mt-5">
-              <AplusPublishLifecycleCard
-                publishJob={latestPublishJob}
-                formatTimestamp={formatTimestamp}
-              />
-            </div>
+                  <div className="mt-5">
+                    <AplusPublishLifecycleCard
+                      publishJob={latestPublishJob}
+                      formatTimestamp={formatTimestamp}
+                    />
+                  </div>
 
-            <div className="mt-5">
-              <AplusOptimizationPanel
-                draft={selectedDraft}
-                hasUnsavedChanges={hasUnsavedChanges}
-                onImprove={(category) => void handleImprove(category)}
-                improvingCategory={isImprovingCategory}
-              />
-            </div>
+                  <div className="mt-5">
+                    <AplusOptimizationPanel
+                      draft={selectedDraft}
+                      hasUnsavedChanges={hasUnsavedChanges}
+                      onImprove={(category) => void handleImprove(category)}
+                      improvingCategory={isImprovingCategory}
+                    />
+                  </div>
+                </>
+              ) : null}
 
             {improvementPreview ? (
               <article className="mt-5 rounded-[1.75rem] border border-emerald-400/20 bg-emerald-500/10 p-5 sm:p-6">
@@ -1303,8 +1266,24 @@ export function AplusStudioPage() {
             ) : null}
 
             {!editorDraft ? (
-              <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm leading-6 text-slate-400">
-                Generate a draft or select an existing draft to start editing the A+ payload.
+              <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6">
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Stage 2</p>
+                <h4 className="mt-3 text-xl font-semibold text-white">Review and edit generated draft</h4>
+                <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-400">
+                  {selectedProduct
+                    ? `Generate an A+ draft for ${selectedProduct.title} to unlock the full editor. The AI will create the headline, subheadline, brand story, key features, compliance notes, and the first set of content modules automatically.`
+                    : "Choose a product and generate a draft to unlock the full editor. The AI will create the headline, subheadline, brand story, key features, compliance notes, and the first set of content modules automatically."}
+                </p>
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">What AI generates</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">Headline, subheadline, brand story, key features, compliance notes, and a structured module set.</p>
+                  </div>
+                  <div className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">What you control first</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">Product, language flow, brand tone, and positioning or customer context.</p>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="mt-6 space-y-8">
