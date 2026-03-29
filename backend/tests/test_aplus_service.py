@@ -417,17 +417,47 @@ def test_multilingual_mock_generation_varies_by_locale_and_structure() -> None:
 
 
 def test_aplus_structured_output_schema_requires_all_module_fields() -> None:
-    schema = AplusDraftPayload.model_json_schema()
+    schema = OpenAiAplusService._openai_response_schema()
     module_schema = schema["$defs"]["AplusModulePayload"]
 
     assert module_schema["additionalProperties"] is False
     assert set(module_schema["required"]) == {
+        "module_id",
         "module_type",
         "headline",
         "body",
         "bullets",
         "image_brief",
+        "image_mode",
+        "image_prompt",
+        "generated_image_url",
+        "uploaded_image_url",
+        "selected_asset_id",
+        "reference_asset_ids",
+        "overlay_text",
+        "image_status",
+        "image_error_message",
+        "image_request_fingerprint",
     }
+
+
+def test_openai_response_schema_requires_every_property_recursively() -> None:
+    schema = OpenAiAplusService._openai_response_schema()
+
+    def assert_required_alignment(node: object) -> None:
+        if isinstance(node, dict):
+            properties = node.get("properties")
+            if isinstance(properties, dict) and properties:
+                assert set(node.get("required", [])) == set(properties.keys())
+            for value in node.values():
+                assert_required_alignment(value)
+            return
+
+        if isinstance(node, list):
+            for item in node:
+                assert_required_alignment(item)
+
+    assert_required_alignment(schema)
 
 
 def test_publish_readiness_report_flags_blockers_and_warnings() -> None:
