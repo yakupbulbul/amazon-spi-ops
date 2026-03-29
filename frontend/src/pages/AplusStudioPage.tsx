@@ -967,10 +967,9 @@ export function AplusStudioPage() {
                   and publish prepares the Amazon-compatible document preview.
                 </p>
                 <div className="mt-4 rounded-[1.25rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
-                  Image previews are editorial-only right now. Uploaded, selected, and AI-generated images
-                  help review the concept, but the current publish payload still sends text content and
-                  <span className="mx-1 font-mono text-xs">imageBrief</span>
-                  only.
+                  Publish preparation now resolves uploaded, generated, and selected library assets into
+                  the Amazon payload when the module type supports them. Text-only modules still publish
+                  without images, and unsupported module-image combinations are blocked before publish.
                 </div>
                 <div className="mt-4">
                   <AplusScoreBadge score={optimizationScore} />
@@ -1278,10 +1277,10 @@ export function AplusStudioPage() {
                     Publish job {publishResult.publish_job_id} completed with status {publishResult.status}.
                   </div>
                   <div className="rounded-[1.25rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
-                    This prepared payload does not yet embed the selected Studio images. It reflects the
-                    validated text payload and module
+                    This payload reflects the current publish mapping, including resolved module images
+                    where the module type supports them. Text-only modules continue to use the validated
                     <span className="mx-1 font-mono text-xs">imageBrief</span>
-                    fields only.
+                    guidance without an embedded image object.
                   </div>
                   <pre className="overflow-x-auto rounded-[1.5rem] border border-white/10 bg-slate-950 px-4 py-4 text-xs leading-6 text-slate-200">
                     {JSON.stringify(publishResult.prepared_payload, null, 2)}
@@ -1290,8 +1289,8 @@ export function AplusStudioPage() {
               ) : (
                 <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm leading-6 text-slate-400">
                   Prepare the publish payload to inspect the Amazon-compatible JSON that will be sent
-                  by the backend publish workflow. Current image choices remain editorial preview only
-                  until publish mapping is implemented.
+                  by the backend publish workflow, including resolved module images when the module type
+                  supports them.
                 </div>
               )}
             </article>

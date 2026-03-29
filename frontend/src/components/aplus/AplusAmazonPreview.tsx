@@ -3,6 +3,7 @@ import {
   Columns3,
   ImageIcon,
   ImageOff,
+  Info,
   MessageSquareQuote,
   ShieldCheck,
   Sparkles,
@@ -15,7 +16,12 @@ import type {
   AplusModulePayload,
 } from "../../lib/api";
 import { formatLanguageLabel } from "./languages";
-import { resolveModulePreviewImageUrl } from "./previewImage";
+import {
+  moduleHasUnsupportedPublishImageConfig,
+  moduleSupportsPublishImage,
+  moduleSupportsPublishOverlay,
+  resolveModulePublishableImageUrl,
+} from "./previewImage";
 
 type AplusAmazonPreviewProps = {
   draft: AplusDraftPayload;
@@ -31,7 +37,8 @@ const twoLineClampStyle = {
 };
 
 export function AplusAmazonPreview({ draft, language, assets = [] }: AplusAmazonPreviewProps) {
-  const heroImageUrl = resolveModulePreviewImageUrl(draft.modules[0], assets);
+  const heroModule = draft.modules.find((module) => module.module_type === "hero") ?? draft.modules[0];
+  const heroImageUrl = resolveModulePublishableImageUrl(heroModule, assets);
 
   return (
     <div className="rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.12),_transparent_32%),linear-gradient(180deg,rgba(15,23,42,0.9),rgba(2,6,23,0.95))] p-3 sm:p-4">
@@ -87,16 +94,18 @@ export function AplusAmazonPreview({ draft, language, assets = [] }: AplusAmazon
                       <PreviewImageCard
                         imageUrl={heroImageUrl}
                         imageBrief={
-                          draft.modules[0]?.image_brief ?? "Add an image brief to preview the hero visual."
+                          heroModule?.image_brief ?? "Add an image brief to preview the hero visual."
                         }
                       />
-                      <div className="mt-3 inline-flex max-w-full rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white">
-                        <span className="truncate">
-                          {draft.modules[0]?.overlay_text ??
-                            extractOverlayText(draft.modules[0]?.image_brief) ??
-                            "Overlay text preview"}
-                        </span>
-                      </div>
+                      {heroImageUrl && heroModule && moduleSupportsPublishOverlay(heroModule.module_type) ? (
+                        <div className="mt-3 inline-flex max-w-full rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white">
+                          <span className="truncate">
+                            {heroModule.overlay_text ??
+                              extractOverlayText(heroModule.image_brief) ??
+                              "Overlay text preview"}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </section>
@@ -159,7 +168,9 @@ function ModulePreviewCard({
   module: AplusModulePayload;
   assets: AplusAsset[];
 }) {
-  const imageUrl = resolveModulePreviewImageUrl(module, assets);
+  const imageUrl = resolveModulePublishableImageUrl(module, assets);
+  const supportsImage = moduleSupportsPublishImage(module.module_type);
+  const unsupportedImageConfig = moduleHasUnsupportedPublishImageConfig(module);
 
   if (module.module_type === "comparison") {
     const rows = module.bullets.map(parseComparisonRow);
@@ -172,7 +183,16 @@ function ModulePreviewCard({
         </div>
         <h5 className="mt-2 text-lg font-semibold leading-snug text-slate-950">{module.headline}</h5>
         <p className="mt-2 text-[13px] leading-5 text-slate-600">{module.body}</p>
-        <PreviewImageCard imageUrl={imageUrl} imageBrief={module.image_brief} />
+        <div className="mt-3 rounded-[0.95rem] border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] leading-5 text-slate-600">
+          {unsupportedImageConfig ? (
+            <span className="inline-flex items-start gap-2">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+              Comparison modules publish as table content only. Any attached Studio image or overlay is omitted.
+            </span>
+          ) : (
+            "Comparison modules publish as text/table content. Image guidance stays in the image brief only."
+          )}
+        </div>
         <div className="mt-3 overflow-hidden rounded-[0.9rem] border border-slate-200">
           <div className="grid grid-cols-[1fr_0.95fr_0.95fr] bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             <div className="px-2.5 py-2">Criteria</div>
@@ -212,12 +232,29 @@ function ModulePreviewCard({
               {module.module_type === "faq" ? "Trust section" : `${module.module_type} module`}
             </p>
           </div>
-          <PreviewImageCard imageUrl={imageUrl} imageBrief={module.image_brief} />
-          <div className="mt-3 inline-flex max-w-full rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white">
-            <span className="truncate">
-              {module.overlay_text ?? extractOverlayText(module.image_brief) ?? "Overlay text preview"}
-            </span>
-          </div>
+          {supportsImage ? (
+            <>
+              <PreviewImageCard imageUrl={imageUrl} imageBrief={module.image_brief} />
+              {imageUrl && moduleSupportsPublishOverlay(module.module_type) ? (
+                <div className="mt-3 inline-flex max-w-full rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white">
+                  <span className="truncate">
+                    {module.overlay_text ?? extractOverlayText(module.image_brief) ?? "Overlay text preview"}
+                  </span>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="mt-3 rounded-[0.95rem] border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] leading-5 text-slate-600">
+              {unsupportedImageConfig ? (
+                <span className="inline-flex items-start gap-2">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                  This module publishes as text only. Attached Studio images or overlays are omitted.
+                </span>
+              ) : (
+                "This module publishes as text only."
+              )}
+            </div>
+          )}
         </div>
 
         <div>
