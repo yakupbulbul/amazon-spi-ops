@@ -966,6 +966,12 @@ export function AplusStudioPage() {
                   Edit the structured JSON fields directly. Validation persists the edited payload,
                   and publish prepares the Amazon-compatible document preview.
                 </p>
+                <div className="mt-4 rounded-[1.25rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
+                  Image previews are editorial-only right now. Uploaded, selected, and AI-generated images
+                  help review the concept, but the current publish payload still sends text content and
+                  <span className="mx-1 font-mono text-xs">imageBrief</span>
+                  only.
+                </div>
                 <div className="mt-4">
                   <AplusScoreBadge score={optimizationScore} />
                 </div>
@@ -1059,6 +1065,13 @@ export function AplusStudioPage() {
                   <div className="rounded-[1.25rem] border border-sky-300/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
                     Editor changes are unsaved. Validate again to refresh the publish checklist and enable
                     publish preview.
+                  </div>
+                ) : null}
+
+                {selectedDraft?.validated_payload ? (
+                  <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-slate-300">
+                    The last validated payload stays frozen as the editorial checkpoint. Background image
+                    updates change the working draft only until you validate again.
                   </div>
                 ) : null}
 
@@ -1264,6 +1277,12 @@ export function AplusStudioPage() {
                   <div className="rounded-[1.5rem] border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm leading-6 text-emerald-100">
                     Publish job {publishResult.publish_job_id} completed with status {publishResult.status}.
                   </div>
+                  <div className="rounded-[1.25rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
+                    This prepared payload does not yet embed the selected Studio images. It reflects the
+                    validated text payload and module
+                    <span className="mx-1 font-mono text-xs">imageBrief</span>
+                    fields only.
+                  </div>
                   <pre className="overflow-x-auto rounded-[1.5rem] border border-white/10 bg-slate-950 px-4 py-4 text-xs leading-6 text-slate-200">
                     {JSON.stringify(publishResult.prepared_payload, null, 2)}
                   </pre>
@@ -1271,7 +1290,8 @@ export function AplusStudioPage() {
               ) : (
                 <div className="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm leading-6 text-slate-400">
                   Prepare the publish payload to inspect the Amazon-compatible JSON that will be sent
-                  by the backend publish workflow.
+                  by the backend publish workflow. Current image choices remain editorial preview only
+                  until publish mapping is implemented.
                 </div>
               )}
             </article>

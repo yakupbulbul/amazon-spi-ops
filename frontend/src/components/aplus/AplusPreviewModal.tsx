@@ -113,6 +113,10 @@ export function AplusPreviewModal({
                   page. Use the view modes below to compare the device-style frame and the stacked module
                   composition.
                 </p>
+                <div className="mt-4 rounded-[1rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
+                  This preview is visual and editorial only. The current publish preparation flow does not
+                  yet carry selected Studio images into the Amazon payload.
+                </div>
               </div>
 
               <div className="flex items-center gap-3 self-start">
