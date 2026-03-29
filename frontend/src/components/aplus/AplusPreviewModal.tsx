@@ -5,7 +5,11 @@ import { createPortal } from "react-dom";
 import type { AplusAsset, AplusDraftPayload, AplusLanguage } from "../../lib/api";
 import { AplusAmazonPreview } from "./AplusAmazonPreview";
 import { formatLanguageLabel } from "./languages";
-import { resolveModulePreviewImageUrl } from "./previewImage";
+import {
+  moduleHasUnsupportedPublishImageConfig,
+  moduleSupportsPublishOverlay,
+  resolveModulePublishableImageUrl,
+} from "./previewImage";
 
 type AplusPreviewModalProps = {
   draft: AplusDraftPayload;
@@ -114,8 +118,9 @@ export function AplusPreviewModal({
                   composition.
                 </p>
                 <div className="mt-4 rounded-[1rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
-                  This preview is visual and editorial only. The current publish preparation flow does not
-                  yet carry selected Studio images into the Amazon payload.
+                  This preview mirrors the current publish mapping. Only publishable module images and
+                  supported overlays are shown here. Unsupported module-image combinations are called out
+                  and omitted.
                 </div>
               </div>
 
@@ -239,19 +244,23 @@ function AplusModuleStackPreview({
             <div className="rounded-[1.1rem] bg-[linear-gradient(135deg,rgba(226,232,240,0.2),rgba(248,250,252,0.06))] p-4">
               <p className="text-xs uppercase tracking-[0.22em] text-slate-400">{module.module_type}</p>
               <div className="mt-3 overflow-hidden rounded-[1rem] border border-white/10 bg-slate-950/60">
-                {resolveModulePreviewImageUrl(module, assets) ? (
+                {resolveModulePublishableImageUrl(module, assets) ? (
                   <img
-                    src={resolveModulePreviewImageUrl(module, assets) ?? undefined}
+                    src={resolveModulePublishableImageUrl(module, assets) ?? undefined}
                     alt={module.image_brief}
                     className="aspect-[4/3] h-full w-full object-cover"
                   />
                 ) : (
                   <div className="flex aspect-[4/3] items-center justify-center px-4 text-center text-sm leading-6 text-slate-500">
-                    {module.image_brief}
+                    {moduleHasUnsupportedPublishImageConfig(module)
+                      ? "This module publishes without the selected Studio image."
+                      : module.image_brief}
                   </div>
                 )}
               </div>
-              {module.overlay_text ? (
+              {module.overlay_text &&
+              resolveModulePublishableImageUrl(module, assets) &&
+              moduleSupportsPublishOverlay(module.module_type) ? (
                 <div className="mt-3 rounded-full bg-white/[0.06] px-3 py-2 text-xs text-slate-200">
                   Overlay: {module.overlay_text}
                 </div>
