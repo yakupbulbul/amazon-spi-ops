@@ -83,6 +83,105 @@ def test_translate_aplus_draft_preserves_schema_shape_without_api_key() -> None:
     assert translated.headline.endswith("(de-DE)")
 
 
+def test_translation_merge_preserves_control_fields_for_image_enabled_modules() -> None:
+    original = AplusDraftPayload(
+        headline="Original headline",
+        subheadline="Original subheadline with clear shopper context.",
+        brand_story="Original brand story with product detail, context, and differentiation for editing.",
+        key_features=[
+            "Original feature one",
+            "Original feature two",
+            "Original feature three",
+        ],
+        modules=[
+            {
+                "module_id": "hero-module-0001",
+                "module_type": "hero",
+                "headline": "Original hero",
+                "body": "Original hero body with a practical customer outcome explained clearly.",
+                "bullets": ["Original bullet one", "Original bullet two"],
+                "image_brief": "Original image brief with overlay suggestion.",
+                "image_mode": "generated",
+                "image_prompt": "Keep the original image prompt",
+                "generated_image_url": "https://example.com/generated.png",
+                "uploaded_image_url": "https://example.com/uploaded.png",
+                "selected_asset_id": "asset-12345",
+                "reference_asset_ids": ["asset-ref-1", "asset-ref-2"],
+                "overlay_text": "Keep this overlay exactly",
+                "image_status": "completed",
+                "image_error_message": "Preserve exact worker message",
+            },
+            {
+                "module_id": "feature-module-0001",
+                "module_type": "feature",
+                "headline": "Original feature",
+                "body": "Original feature body with a specific shopper benefit.",
+                "bullets": ["Original feature bullet"],
+                "image_brief": "Original feature image brief.",
+            },
+            {
+                "module_id": "comparison-module-0001",
+                "module_type": "comparison",
+                "headline": "Original comparison",
+                "body": "Original comparison body against generic alternatives.",
+                "bullets": ["Fit | Tailored support | Basic support"],
+                "image_brief": "Original comparison image brief.",
+            },
+        ],
+        compliance_notes=[
+            "Do not translate this internal editorial note.",
+            "Preserve the original compliance instruction.",
+        ],
+    )
+
+    translated = OpenAiAplusService._merge_translated_payload(
+        original_payload=original,
+        translated_payload={
+                "headline": "Translated headline",
+                "subheadline": "Translated subheadline",
+                "brand_story": "Translated brand story with enough detail to satisfy the schema length requirement safely.",
+            "key_features": ["Translated feature one", "Translated feature two", "Translated feature three"],
+            "compliance_notes": ["Changed note should not be used"],
+            "modules": [
+                {
+                    "module_id": "hero-module-0001",
+                    "module_type": "faq",
+                    "headline": "Translated hero",
+                    "body": "Translated hero body",
+                    "bullets": ["Translated bullet one", "Translated bullet two"],
+                    "image_brief": "Translated image brief",
+                    "image_mode": "uploaded",
+                    "image_prompt": "Changed prompt should be ignored",
+                    "generated_image_url": "https://malicious.example/override.png",
+                    "uploaded_image_url": "https://malicious.example/override-upload.png",
+                    "selected_asset_id": "other-asset",
+                    "reference_asset_ids": ["other-ref"],
+                    "overlay_text": "Changed overlay should be ignored",
+                    "image_status": "failed",
+                    "image_error_message": "Changed status should be ignored",
+                }
+            ],
+        },
+    )
+
+    translated_hero = translated.modules[0]
+
+    assert translated.headline == "Translated headline"
+    assert translated.subheadline == "Translated subheadline"
+    assert translated.key_features[0] == "Translated feature one"
+    assert translated.compliance_notes == original.compliance_notes
+    assert translated_hero.module_type == "hero"
+    assert translated_hero.image_mode == "generated"
+    assert translated_hero.image_prompt == "Keep the original image prompt"
+    assert translated_hero.generated_image_url == "https://example.com/generated.png"
+    assert translated_hero.uploaded_image_url == "https://example.com/uploaded.png"
+    assert translated_hero.selected_asset_id == "asset-12345"
+    assert translated_hero.reference_asset_ids == ["asset-ref-1", "asset-ref-2"]
+    assert translated_hero.overlay_text == "Keep this overlay exactly"
+    assert translated_hero.image_status == "completed"
+    assert translated_hero.image_error_message == "Preserve exact worker message"
+
+
 def test_multilingual_mock_generation_varies_by_locale_and_structure() -> None:
     service = OpenAiAplusService(
         Settings(
