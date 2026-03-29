@@ -138,6 +138,7 @@ class AplusPublishJob(UUIDPrimaryKeyMixin, Base):
     )
     status: Mapped[str] = mapped_column(String(32), default=JobStatus.PENDING.value, nullable=False)
     external_submission_id: Mapped[str | None] = mapped_column(String(255))
+    response_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     error_message: Mapped[str | None] = mapped_column(String(1024))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -125,6 +125,19 @@ class AplusPublishRequest(BaseModel):
     draft_id: str
 
 
+class AplusPublishJobResponse(BaseModel):
+    id: str
+    draft_id: str
+    status: str
+    content_reference_key: str | None
+    error_message: str | None
+    rejection_reasons: list[str]
+    warnings: list[str]
+    submitted_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+
+
 class AplusAssetResponse(BaseModel):
     id: str
     product_id: str | None
@@ -171,4 +184,5 @@ class AplusPublishResponse(BaseModel):
     publish_job_id: str
     status: str
     message: str
+    publish_job: AplusPublishJobResponse
     prepared_payload: dict[str, object]
