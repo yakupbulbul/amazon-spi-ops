@@ -57,6 +57,13 @@ const defaultModuleOrder: AplusModulePayload["module_type"][] = [
   "comparison",
 ];
 
+function createModuleId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID().replaceAll("-", "");
+  }
+  return `${Date.now().toString(16)}${Math.random().toString(16).slice(2, 10)}`;
+}
+
 function formatTimestamp(value: string): string {
   return new Intl.DateTimeFormat("de-DE", {
     dateStyle: "medium",
@@ -79,6 +86,7 @@ function buildEmptyDraft(product?: ProductListItem | null): AplusDraftPayload {
       "Add one marketplace-safe proof point",
     ],
     modules: defaultModuleOrder.map((moduleType, index) => ({
+      module_id: createModuleId(),
       module_type: moduleType,
       headline: `${moduleLabels[moduleType]} module ${index + 1}`,
       body: "Write concise, factual module copy that stays aligned with the live listing details.",
@@ -610,7 +618,7 @@ export function AplusStudioPage() {
     try {
       const draft = await generateAplusModuleImage(token, {
         draft_id: selectedDraftId,
-        module_index: index,
+        module_id: module.module_id,
         image_prompt: module.image_prompt,
         overlay_text: module.overlay_text,
         reference_asset_ids: module.reference_asset_ids,
@@ -640,6 +648,7 @@ export function AplusStudioPage() {
         modules: [
           ...currentDraft.modules,
           {
+            module_id: createModuleId(),
             module_type: "feature",
             headline: "New feature module",
             body: "Add factual supporting copy for this additional content block.",
@@ -1209,7 +1218,7 @@ export function AplusStudioPage() {
                   <div className="space-y-4">
                     {editorDraft.modules.map((module, index) => (
                       <AplusModuleEditorCard
-                        key={`${module.module_type}-${index}`}
+                        key={module.module_id}
                         index={index}
                         module={module}
                         isExpanded={expandedModules.includes(index)}

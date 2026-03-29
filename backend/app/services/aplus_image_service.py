@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models.entities import AplusAsset, AplusDraft, Product, User
-from app.schemas.aplus import AplusDraftPayload, AplusDraftResponse
+from app.schemas.aplus import AplusDraftPayload, AplusDraftResponse, AplusModulePayload
 from app.services.ai.image_provider import GeneratedImageResult, ImageProvider
-from app.services.aplus_service import AplusService
 from app.services.media_storage import MediaStorageService
+
+if TYPE_CHECKING:
+    from app.models.entities import AplusAsset, AplusDraft, Product, User
+    from app.services.aplus_service import AplusService
 
 
 class AplusImageService:
@@ -28,7 +31,7 @@ class AplusImageService:
         self,
         *,
         draft_id: UUID,
-        module_index: int,
+        module_id: str,
         image_prompt: str | None,
         overlay_text: str | None,
         reference_asset_ids: list[str],
@@ -37,13 +40,12 @@ class AplusImageService:
         draft = self._get_draft(draft_id)
         product = self._get_product(draft.product_id)
         payload = self._load_active_payload(draft)
-        self._validate_module_index(payload=payload, module_index=module_index)
-        module = payload.modules[module_index]
+        module = self._require_module(payload=payload, module_id=module_id)
         module.image_mode = "generated"
         module.image_prompt = image_prompt or self._build_default_prompt(
             product=product,
             draft=draft,
-            module_index=module_index,
+            module_id=module_id,
             draft_payload=payload,
         )
         module.overlay_text = overlay_text
@@ -57,12 +59,13 @@ class AplusImageService:
         self.db_session.refresh(draft)
         return self._serializer()._serialize_draft(draft=draft, product=product)
 
-    def process_generation(self, *, draft_id: UUID, module_index: int, requested_by_id: UUID | None) -> None:
+    def process_generation(self, *, draft_id: UUID, module_id: str, requested_by_id: UUID | None) -> None:
         draft = self._get_draft(draft_id)
         product = self._get_product(draft.product_id)
         payload = self._load_active_payload(draft)
-        self._validate_module_index(payload=payload, module_index=module_index)
-        module = payload.modules[module_index]
+        module = self._find_module(payload=payload, module_id=module_id)
+        if module is None:
+            return
         module.image_status = "generating"
         module.image_error_message = None
         self._persist_payload(draft=draft, payload=payload)
@@ -74,7 +77,7 @@ class AplusImageService:
                 prompt=module.image_prompt or self._build_default_prompt(
                     product=product,
                     draft=draft,
-                    module_index=module_index,
+                    module_id=module_id,
                     draft_payload=payload,
                 ),
                 reference_image_paths=reference_paths,
@@ -89,7 +92,10 @@ class AplusImageService:
             )
 
             payload = self._load_active_payload(draft)
-            completed_module = payload.modules[module_index]
+            completed_module = self._find_module(payload=payload, module_id=module_id)
+            if completed_module is None:
+                self.db_session.commit()
+                return
             completed_module.image_mode = "generated"
             completed_module.generated_image_url = asset.public_url
             completed_module.selected_asset_id = str(asset.id)
@@ -99,7 +105,10 @@ class AplusImageService:
             self.db_session.commit()
         except Exception as exc:
             payload = self._load_active_payload(draft)
-            failed_module = payload.modules[module_index]
+            failed_module = self._find_module(payload=payload, module_id=module_id)
+            if failed_module is None:
+                self.db_session.commit()
+                return
             failed_module.image_status = "failed"
             failed_module.image_error_message = str(exc)[:1024]
             self._persist_payload(draft=draft, payload=payload)
@@ -107,6 +116,8 @@ class AplusImageService:
 
     def _resolve_reference_paths(self, asset_ids: list[str]) -> list[Path]:
         paths: list[Path] = []
+        from app.models.entities import AplusAsset
+
         for asset_id in asset_ids[:4]:
             asset = self.db_session.get(AplusAsset, UUID(asset_id))
             if asset is None:
@@ -123,7 +134,9 @@ class AplusImageService:
         requested_by_id: UUID | None,
         result: GeneratedImageResult,
         reference_asset_ids: list[str],
-    ) -> AplusAsset:
+    ) -> "AplusAsset":
+        from app.models.entities import AplusAsset
+
         suffix = ".png" if result.mime_type == "image/png" else ".jpg"
         _, public_url = self.storage_service.store_bytes(
             subdirectory="aplus-assets",
@@ -156,10 +169,10 @@ class AplusImageService:
         *,
         product: Product,
         draft: AplusDraft,
-        module_index: int,
+        module_id: str,
         draft_payload: AplusDraftPayload,
     ) -> str:
-        module = draft_payload.modules[module_index]
+        module = self._require_module(payload=draft_payload, module_id=module_id)
         tone = draft.brand_tone or "balanced and product-led"
         positioning = draft.positioning or "marketplace shoppers"
         overlay_instruction = (
@@ -178,19 +191,24 @@ class AplusImageService:
     def _persist_payload(self, *, draft: AplusDraft, payload: AplusDraftPayload) -> None:
         dumped_payload = payload.model_dump(mode="json")
         draft.draft_payload = dumped_payload
-        if draft.validated_payload is not None:
-            draft.validated_payload = dumped_payload
 
     @staticmethod
-    def _validate_module_index(*, payload: AplusDraftPayload, module_index: int) -> None:
-        if module_index < 0 or module_index >= len(payload.modules):
+    def _find_module(*, payload: AplusDraftPayload, module_id: str) -> AplusModulePayload | None:
+        return next((module for module in payload.modules if module.module_id == module_id), None)
+
+    def _require_module(self, *, payload: AplusDraftPayload, module_id: str) -> AplusModulePayload:
+        module = self._find_module(payload=payload, module_id=module_id)
+        if module is None:
             raise ValueError("A+ module not found.")
+        return module
 
     @staticmethod
     def _load_active_payload(draft: AplusDraft) -> AplusDraftPayload:
         return AplusDraftPayload.model_validate(draft.validated_payload or draft.draft_payload)
 
-    def _serializer(self) -> AplusService:
+    def _serializer(self) -> "AplusService":
+        from app.services.aplus_service import AplusService
+
         return AplusService(self.db_session, None, None)  # type: ignore[arg-type]
 
     def _get_draft(self, draft_id: UUID) -> AplusDraft:

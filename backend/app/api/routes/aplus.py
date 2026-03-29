@@ -110,13 +110,13 @@ def queue_aplus_image_generation(
     try:
         draft = image_service.queue_image_generation(
             draft_id=UUID(payload.draft_id),
-            module_index=payload.module_index,
+            module_id=payload.module_id,
             image_prompt=payload.image_prompt,
             overlay_text=payload.overlay_text,
             reference_asset_ids=payload.reference_asset_ids,
             requested_by=current_user,
         )
-        generate_aplus_module_image.send(payload.draft_id, payload.module_index, str(current_user.id))
+        generate_aplus_module_image.send(payload.draft_id, payload.module_id, str(current_user.id))
         return draft
     except ValueError as exc:
         detail = str(exc)

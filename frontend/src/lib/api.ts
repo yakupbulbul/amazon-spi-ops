@@ -143,6 +143,7 @@ export type InventorySyncResponse = {
 };
 
 export type AplusModulePayload = {
+  module_id: string;
   module_type: "hero" | "feature" | "comparison" | "faq";
   headline: string;
   body: string;
@@ -486,7 +487,7 @@ export async function generateAplusModuleImage(
   token: string,
   payload: {
     draft_id: string;
-    module_index: number;
+    module_id: string;
     image_prompt?: string | null;
     overlay_text?: string | null;
     reference_asset_ids: string[];
