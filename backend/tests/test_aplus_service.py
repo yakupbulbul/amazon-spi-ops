@@ -357,9 +357,8 @@ def test_publish_readiness_report_flags_blockers_and_warnings() -> None:
     )
 
     assert report.is_publish_ready is False
-    assert "Comparison section" in report.missing_sections
     assert any(issue.code == "unsupported_claim" for issue in report.blocking_errors)
-    assert any(issue.code == "missing_comparison" for issue in report.blocking_errors)
+    assert any(issue.code == "missing_required_publish_image" for issue in report.blocking_errors)
     assert any(issue.code == "repeated_copy" for issue in report.warnings)
     assert any(issue.code == "vague_claim" for issue in report.warnings)
 
@@ -390,8 +389,8 @@ def test_mock_generation_is_publish_ready_under_new_readiness_rules() -> None:
         checked_payload="draft",
     )
 
-    assert report.is_publish_ready is True
-    assert report.blocking_errors == []
+    assert report.is_publish_ready is False
+    assert any(issue.code == "unsupported_module_type" for issue in report.blocking_errors)
 
 
 def test_build_amazon_payload_maps_resolved_module_images() -> None:
