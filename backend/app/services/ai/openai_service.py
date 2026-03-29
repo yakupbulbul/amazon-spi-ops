@@ -56,7 +56,7 @@ class OpenAiAplusService:
                 "json_schema": {
                     "name": "amazon_aplus_draft",
                     "strict": True,
-                    "schema": AplusDraftPayload.model_json_schema(),
+                    "schema": self._openai_response_schema(),
                 },
             },
         }
@@ -118,7 +118,7 @@ class OpenAiAplusService:
                 "json_schema": {
                     "name": "amazon_aplus_translation",
                     "strict": True,
-                    "schema": AplusDraftPayload.model_json_schema(),
+                    "schema": self._openai_response_schema(),
                 },
             },
         }
@@ -179,6 +179,27 @@ class OpenAiAplusService:
             )
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _openai_response_schema() -> dict[str, Any]:
+        schema = AplusDraftPayload.model_json_schema()
+        OpenAiAplusService._require_all_object_properties(schema)
+        return schema
+
+    @staticmethod
+    def _require_all_object_properties(node: Any) -> None:
+        if isinstance(node, dict):
+            properties = node.get("properties")
+            if isinstance(properties, dict) and properties:
+                node["required"] = list(properties.keys())
+
+            for value in node.values():
+                OpenAiAplusService._require_all_object_properties(value)
+            return
+
+        if isinstance(node, list):
+            for item in node:
+                OpenAiAplusService._require_all_object_properties(item)
 
     @staticmethod
     def _mock_draft(
