@@ -42,6 +42,10 @@ class AplusImageService:
         product = self._get_product(draft.product_id)
         payload = self._load_active_payload(draft)
         module = self._require_module(payload=payload, module_id=module_id)
+        validated_reference_ids = self._validate_reference_assets(
+            product=product,
+            asset_ids=reference_asset_ids,
+        )
         resolved_prompt = image_prompt or self._build_default_prompt(
             product=product,
             draft=draft,
@@ -52,7 +56,7 @@ class AplusImageService:
             draft_id=draft_id,
             module_id=module_id,
             prompt=resolved_prompt,
-            reference_asset_ids=reference_asset_ids,
+            reference_asset_ids=validated_reference_ids,
         )
         if (
             module.image_request_fingerprint == fingerprint
@@ -68,7 +72,7 @@ class AplusImageService:
         module.image_mode = "generated"
         module.image_prompt = resolved_prompt
         module.overlay_text = overlay_text
-        module.reference_asset_ids = reference_asset_ids[:8]
+        module.reference_asset_ids = validated_reference_ids
         module.image_status = "queued"
         module.image_error_message = None
         module.generated_image_url = None
@@ -179,14 +183,31 @@ class AplusImageService:
 
     def _resolve_reference_paths(self, asset_ids: list[str]) -> list[Path]:
         paths: list[Path] = []
-        from app.models.entities import AplusAsset
-
+        asset_model = self._asset_model()
         for asset_id in asset_ids[:4]:
-            asset = self.db_session.get(AplusAsset, UUID(asset_id))
+            asset = self.db_session.get(asset_model, UUID(asset_id))
             if asset is None:
                 continue
             paths.append(self.storage_service.resolve_public_url(asset.public_url))
         return [path for path in paths if path.exists()]
+
+    def _validate_reference_assets(self, *, product: Product, asset_ids: list[str]) -> list[str]:
+        validated_ids: list[str] = []
+        asset_model = self._asset_model()
+        for asset_id in asset_ids[:8]:
+            try:
+                asset_uuid = UUID(asset_id)
+            except ValueError as exc:
+                raise ValueError("Invalid reference asset id.") from exc
+
+            asset = self.db_session.get(asset_model, asset_uuid)
+            if asset is None:
+                raise ValueError("Reference asset not found.")
+            if asset.product_id not in {None, product.id}:
+                raise ValueError("Reference asset does not belong to this product.")
+            validated_ids.append(str(asset.id))
+
+        return validated_ids
 
     def _create_generated_asset(
         self,
@@ -284,6 +305,12 @@ class AplusImageService:
         from app.services.aplus_service import AplusService
 
         return AplusService(self.db_session, None, None)  # type: ignore[arg-type]
+
+    @staticmethod
+    def _asset_model():
+        from app.models.entities import AplusAsset
+
+        return AplusAsset
 
     def _get_draft(self, draft_id: UUID) -> AplusDraft:
         draft = self.db_session.get(AplusDraft, draft_id)

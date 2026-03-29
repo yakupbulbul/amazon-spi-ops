@@ -12,6 +12,9 @@ from app.services.media_storage import MediaStorageService
 
 
 class FakeSession:
+    def __init__(self) -> None:
+        self.registry: dict[tuple[str, object], object] = {}
+
     def commit(self) -> None:
         return None
 
@@ -23,6 +26,10 @@ class FakeSession:
 
     def flush(self) -> None:
         return None
+
+    def get(self, model: object, key: object) -> object | None:
+        model_name = getattr(model, "__name__", str(model))
+        return self.registry.get((model_name, key))
 
 
 class FakeImageProvider:
@@ -36,10 +43,12 @@ class FakeImageProvider:
 
 class StubAplusImageService(AplusImageService):
     def __init__(self, draft: SimpleNamespace, product: SimpleNamespace, storage_service: MediaStorageService) -> None:
-        super().__init__(FakeSession(), FakeImageProvider(), storage_service)
+        session = FakeSession()
+        super().__init__(session, FakeImageProvider(), storage_service)
         self._draft = draft
         self._product = product
         self.created_asset_count = 0
+        self.fake_session = session
 
     def _serializer(self):  # type: ignore[override]
         return SimpleNamespace(_serialize_draft=lambda **_: {"status": "queued"})
@@ -61,6 +70,10 @@ class StubAplusImageService(AplusImageService):
             id=uuid4(),
             public_url="/media/aplus-assets/generated-test.png",
         )
+
+    @staticmethod
+    def _asset_model():
+        return type("AplusAsset", (), {})
 
 
 def build_payload() -> AplusDraftPayload:
@@ -295,12 +308,23 @@ def test_stale_job_targeting_does_not_touch_other_modules() -> None:
 def test_queue_image_generation_rejects_duplicate_inflight_request() -> None:
     payload = build_payload()
     draft, product = build_entities(payload)
+    asset_a = uuid4()
+    asset_b = uuid4()
 
     with TemporaryDirectory() as tmpdir:
         service = StubAplusImageService(
             draft,
             product,
             MediaStorageService(root=Path(tmpdir), url_prefix="/media"),
+        )
+        asset_model = service._asset_model()
+        service.fake_session.registry[(asset_model.__name__, asset_a)] = SimpleNamespace(
+            id=asset_a,
+            product_id=product.id,
+        )
+        service.fake_session.registry[(asset_model.__name__, asset_b)] = SimpleNamespace(
+            id=asset_b,
+            product_id=product.id,
         )
 
         requested_by = SimpleNamespace(id=uuid4())
@@ -309,7 +333,7 @@ def test_queue_image_generation_rejects_duplicate_inflight_request() -> None:
             module_id="feature-0001",
             image_prompt="Focused prompt",
             overlay_text=None,
-            reference_asset_ids=["asset-a", "asset-b"],
+            reference_asset_ids=[str(asset_a), str(asset_b)],
             requested_by=requested_by,
         )
 
@@ -321,7 +345,7 @@ def test_queue_image_generation_rejects_duplicate_inflight_request() -> None:
                 module_id="feature-0001",
                 image_prompt="Focused prompt",
                 overlay_text=None,
-                reference_asset_ids=["asset-a", "asset-b"],
+                reference_asset_ids=[str(asset_a), str(asset_b)],
                 requested_by=requested_by,
             )
         except ValueError as exc:
@@ -333,12 +357,18 @@ def test_queue_image_generation_rejects_duplicate_inflight_request() -> None:
 def test_process_generation_is_idempotent_for_redelivery() -> None:
     payload = build_payload()
     draft, product = build_entities(payload)
+    asset_id = uuid4()
 
     with TemporaryDirectory() as tmpdir:
         service = StubAplusImageService(
             draft,
             product,
             MediaStorageService(root=Path(tmpdir), url_prefix="/media"),
+        )
+        asset_model = service._asset_model()
+        service.fake_session.registry[(asset_model.__name__, asset_id)] = SimpleNamespace(
+            id=asset_id,
+            product_id=product.id,
         )
 
         requested_by = SimpleNamespace(id=uuid4())
@@ -347,7 +377,7 @@ def test_process_generation_is_idempotent_for_redelivery() -> None:
             module_id="feature-0001",
             image_prompt="Focused prompt",
             overlay_text=None,
-            reference_asset_ids=["asset-a"],
+            reference_asset_ids=[str(asset_id)],
             requested_by=requested_by,
         )
         assert should_enqueue is True
@@ -418,3 +448,64 @@ def test_mark_enqueue_failed_updates_queued_module() -> None:
 
     assert target.image_status == "failed"
     assert target.image_error_message == "Broker unavailable"
+
+
+def test_queue_image_generation_rejects_invalid_reference_asset() -> None:
+    payload = build_payload()
+    draft, product = build_entities(payload)
+
+    with TemporaryDirectory() as tmpdir:
+        service = StubAplusImageService(
+            draft,
+            product,
+            MediaStorageService(root=Path(tmpdir), url_prefix="/media"),
+        )
+
+        requested_by = SimpleNamespace(id=uuid4())
+
+        try:
+            service.queue_image_generation(
+                draft_id=draft.id,
+                module_id="feature-0001",
+                image_prompt="Focused prompt",
+                overlay_text=None,
+                reference_asset_ids=["not-a-uuid"],
+                requested_by=requested_by,
+            )
+        except ValueError as exc:
+            assert str(exc) == "Invalid reference asset id."
+        else:
+            raise AssertionError("Expected invalid reference asset id to be rejected.")
+
+
+def test_queue_image_generation_rejects_cross_product_reference_asset() -> None:
+    payload = build_payload()
+    draft, product = build_entities(payload)
+
+    with TemporaryDirectory() as tmpdir:
+        service = StubAplusImageService(
+            draft,
+            product,
+            MediaStorageService(root=Path(tmpdir), url_prefix="/media"),
+        )
+
+        foreign_asset_id = uuid4()
+        service.fake_session.registry[("AplusAsset", foreign_asset_id)] = SimpleNamespace(
+            id=foreign_asset_id,
+            product_id=uuid4(),
+        )
+        requested_by = SimpleNamespace(id=uuid4())
+
+        try:
+            service.queue_image_generation(
+                draft_id=draft.id,
+                module_id="feature-0001",
+                image_prompt="Focused prompt",
+                overlay_text=None,
+                reference_asset_ids=[str(foreign_asset_id)],
+                requested_by=requested_by,
+            )
+        except ValueError as exc:
+            assert str(exc) == "Reference asset does not belong to this product."
+        else:
+            raise AssertionError("Expected cross-product reference asset to be rejected.")

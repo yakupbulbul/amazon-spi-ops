@@ -26,4 +26,8 @@ class MediaStorageService:
 
     def resolve_public_url(self, public_url: str) -> Path:
         relative_path = public_url.removeprefix(f"{self.url_prefix}/")
-        return self.root / relative_path
+        resolved_path = (self.root / relative_path).resolve()
+        root_path = self.root.resolve()
+        if root_path not in resolved_path.parents and resolved_path != root_path:
+            raise ValueError("Resolved media path is outside the configured storage root.")
+        return resolved_path

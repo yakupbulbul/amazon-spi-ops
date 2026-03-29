@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import UploadFile
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import AplusAsset, Product, User
 from app.schemas.aplus import AplusAssetListResponse, AplusAssetResponse
 from app.services.media_storage import MediaStorageService
+
+if TYPE_CHECKING:
+    from app.models.entities import AplusAsset, Product, User
 
 ALLOWED_IMAGE_TYPES = {
     "image/jpeg": ".jpg",
@@ -31,6 +34,8 @@ class AplusAssetService:
         self.max_upload_bytes = max_upload_bytes
 
     def list_assets(self, *, product_id: UUID | None = None) -> AplusAssetListResponse:
+        from app.models.entities import AplusAsset
+
         statement = select(AplusAsset).order_by(AplusAsset.created_at.desc())
         if product_id is not None:
             statement = statement.where(
@@ -52,24 +57,29 @@ class AplusAssetService:
         if asset_scope not in {"product", "brand", "logo", "generated"}:
             raise ValueError("Unsupported asset scope.")
 
-        if file.content_type not in ALLOWED_IMAGE_TYPES:
-            raise ValueError("Only JPG, PNG, and WEBP images are supported.")
-
         content = await file.read()
         if not content:
             raise ValueError("Uploaded asset is empty.")
         if len(content) > self.max_upload_bytes:
             raise ValueError("Uploaded asset exceeds the configured size limit.")
 
+        detected_mime_type = self._detect_mime_type(content)
+        if detected_mime_type is None:
+            raise ValueError("Only JPG, PNG, and WEBP images are supported.")
+        if file.content_type and file.content_type != detected_mime_type:
+            raise ValueError("Uploaded file content does not match the declared image type.")
+
         product: Product | None = None
         if product_id is not None:
+            from app.models.entities import Product
+
             product = self.db_session.get(Product, product_id)
             if product is None:
                 raise ValueError("Product not found.")
 
         suffix = self._resolve_suffix(
             original_name=file.filename,
-            mime_type=file.content_type,
+            mime_type=detected_mime_type,
         )
         _, public_url = self.storage_service.store_bytes(
             subdirectory="aplus-assets",
@@ -77,13 +87,15 @@ class AplusAssetService:
             content=content,
         )
 
+        from app.models.entities import AplusAsset
+
         asset = AplusAsset(
             product_id=product.id if product is not None else None,
             created_by_id=uploaded_by.id,
             asset_scope=asset_scope,
             label=label or Path(file.filename or "asset").stem,
             file_name=file.filename or f"asset{suffix}",
-            mime_type=file.content_type,
+            mime_type=detected_mime_type,
             file_size_bytes=len(content),
             public_url=public_url,
             asset_metadata={
@@ -103,6 +115,16 @@ class AplusAssetService:
         if candidate in {".jpg", ".jpeg", ".png", ".webp"}:
             return ".jpg" if candidate == ".jpeg" else candidate
         return ALLOWED_IMAGE_TYPES[mime_type]
+
+    @staticmethod
+    def _detect_mime_type(content: bytes) -> str | None:
+        if content.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+            return "image/webp"
+        return None
 
     @staticmethod
     def _serialize_asset(asset: AplusAsset) -> AplusAssetResponse:
