@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -9,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class AplusModulePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    module_id: str = Field(default_factory=lambda: uuid4().hex, min_length=8, max_length=64)
     module_type: Literal["hero", "feature", "comparison", "faq"]
     headline: str = Field(min_length=5, max_length=120)
     body: str = Field(min_length=20, max_length=600)
@@ -34,6 +36,15 @@ class AplusDraftPayload(BaseModel):
     key_features: list[str] = Field(min_length=3, max_length=6)
     modules: list[AplusModulePayload] = Field(min_length=3, max_length=5)
     compliance_notes: list[str] = Field(min_length=2, max_length=6)
+
+    @model_validator(mode="after")
+    def ensure_module_ids(self) -> "AplusDraftPayload":
+        seen_ids: set[str] = set()
+        for module in self.modules:
+            if not module.module_id or module.module_id in seen_ids:
+                module.module_id = uuid4().hex
+            seen_ids.add(module.module_id)
+        return self
 
 
 SupportedAplusLanguage = Literal["de-DE", "en-US", "en-GB", "fr-FR", "it-IT", "es-ES"]
@@ -103,7 +114,7 @@ class AplusValidateRequest(BaseModel):
 
 class AplusGenerateImageRequest(BaseModel):
     draft_id: str
-    module_index: int = Field(ge=0, le=4)
+    module_id: str = Field(min_length=8, max_length=64)
     image_prompt: str | None = Field(default=None, max_length=600)
     overlay_text: str | None = Field(default=None, max_length=160)
     reference_asset_ids: list[str] = Field(default_factory=list, max_length=8)
