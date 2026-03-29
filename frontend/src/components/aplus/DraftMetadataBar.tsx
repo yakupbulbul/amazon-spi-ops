@@ -50,12 +50,12 @@ export function DraftMetadataBar({
           <span
             className={[
               "rounded-full border px-3 py-1.5 text-xs",
-              autoTranslate
+              draft?.variant_role === "translated"
                 ? "border-sky-300/20 bg-sky-500/10 text-sky-100"
                 : "border-emerald-400/20 bg-emerald-500/10 text-emerald-100",
             ].join(" ")}
           >
-            {autoTranslate ? "Translated draft" : "Original draft"}
+            {draft?.variant_role === "translated" ? "Translated draft" : "Original draft"}
           </span>
           {draft ? <AplusDraftStateBadge status={draft.status} /> : null}
         </div>

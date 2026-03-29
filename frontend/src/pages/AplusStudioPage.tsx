@@ -36,6 +36,7 @@ import {
   getProducts,
   improveAplusDraft,
   publishAplusDraft,
+  saveAplusDraft,
   uploadAplusAsset,
   type AplusAsset,
   type AplusDraftPayload,
@@ -118,7 +119,19 @@ function getEditablePayload(draft: AplusDraftResponse | null): AplusDraftPayload
     return null;
   }
 
-  return structuredClone(draft.validated_payload ?? draft.draft_payload);
+  return structuredClone(draft.draft_payload);
+}
+
+function formatVariantLabel(draft: AplusDraftResponse): string {
+  const language = formatLanguageLabel((draft.variant_role === "translated" ? draft.target_language : draft.source_language) as never);
+  return draft.variant_role === "translated" ? `Translated (${language})` : `Original (${language})`;
+}
+
+function sortVariantDrafts(a: AplusDraftResponse, b: AplusDraftResponse): number {
+  if (a.variant_role !== b.variant_role) {
+    return a.variant_role === "original" ? -1 : 1;
+  }
+  return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
 }
 
 function getOptimizationSuggestions(
@@ -159,6 +172,8 @@ export function AplusStudioPage() {
   const [improvementPreview, setImprovementPreview] = useState<AplusImproveResponse | null>(null);
   const [isImprovingCategory, setIsImprovingCategory] =
     useState<AplusImprovementCategory | null>(null);
+  const [isApplyingImprovement, setIsApplyingImprovement] = useState(false);
+  const [switchingVariantId, setSwitchingVariantId] = useState<string | null>(null);
   const [expandedModules, setExpandedModules] = useState<number[]>([0]);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [assetLibraryError, setAssetLibraryError] = useState<string | null>(null);
@@ -178,6 +193,11 @@ export function AplusStudioPage() {
   const generationSourceLanguage = selectedDraft?.source_language ?? sourceLanguage;
   const generationTargetLanguage = selectedDraft?.target_language ?? targetLanguage;
   const generationAutoTranslate = selectedDraft?.auto_translate ?? autoTranslate;
+  const availableVariantDrafts = selectedDraft
+    ? drafts
+        .filter((draft) => draft.variant_group_id === selectedDraft.variant_group_id)
+        .sort(sortVariantDrafts)
+    : [];
   const selectedDraftPayload = getEditablePayload(selectedDraft);
   const hasUnsavedChanges =
     selectedDraft !== null &&
@@ -439,8 +459,10 @@ export function AplusStudioPage() {
         auto_translate: autoTranslate,
       });
 
-      upsertDraft(draft);
-      selectDraft(draft);
+      const draftsResponse = await getAplusDrafts(token);
+      setDrafts(draftsResponse.items);
+      const nextDraft = draftsResponse.items.find((item) => item.id === draft.id) ?? draft;
+      selectDraft(nextDraft);
       setImprovementPreview(null);
       setStatusMessage(
         autoTranslate
@@ -472,8 +494,10 @@ export function AplusStudioPage() {
         draft_payload: editorDraft,
       });
 
-      upsertDraft(draft);
-      selectDraft(draft);
+      const draftsResponse = await getAplusDrafts(token);
+      setDrafts(draftsResponse.items);
+      const nextDraft = draftsResponse.items.find((item) => item.id === draft.id) ?? draft;
+      selectDraft(nextDraft);
       setImprovementPreview(null);
       if (draft.readiness_report.is_publish_ready) {
         setStatusMessage(
@@ -593,21 +617,60 @@ export function AplusStudioPage() {
     }
   }
 
-  function acceptImprovementPreview() {
-    if (!improvementPreview) {
+  async function acceptImprovementPreview() {
+    if (!improvementPreview || !token || !selectedDraftId) {
       return;
     }
 
-    setEditorDraft(improvementPreview.improved_payload);
-    setStatusMessage(
-      `${formatCategoryLabel(improvementPreview.category)} applied to the working draft. Validate when you are ready to refresh the stored score.`,
-    );
-    setImprovementPreview(null);
+    setIsApplyingImprovement(true);
+    setError(null);
+
+    try {
+      const updatedDraft = await saveAplusDraft(token, {
+        draft_id: selectedDraftId,
+        draft_payload: improvementPreview.improved_payload,
+      });
+      upsertDraft(updatedDraft);
+      selectDraft(updatedDraft);
+      setImprovementPreview(null);
+      setStatusMessage(
+        `${formatCategoryLabel(improvementPreview.category)} applied to the current variant. The score and issue list were refreshed immediately.`,
+      );
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error ? saveError.message : "Unable to save the approved improvement.",
+      );
+    } finally {
+      setIsApplyingImprovement(false);
+    }
   }
 
   function rejectImprovementPreview() {
     setImprovementPreview(null);
-    setStatusMessage("Improvement preview discarded. The working draft was not changed.");
+    setStatusMessage("Improvement preview discarded. The working draft and score stayed unchanged.");
+  }
+
+  async function handleVariantSwitch(nextDraft: AplusDraftResponse) {
+    if (nextDraft.id === selectedDraftId) {
+      return;
+    }
+
+    if (hasUnsavedChanges) {
+      const shouldDiscard = window.confirm(
+        "You have unsaved changes in the current variant. Switch variants and discard those edits?",
+      );
+      if (!shouldDiscard) {
+        return;
+      }
+    }
+
+    setSwitchingVariantId(nextDraft.id);
+    setError(null);
+    setStatusMessage(null);
+    startTransition(() => {
+      selectDraft(nextDraft);
+      setSwitchingVariantId(null);
+    });
   }
 
   function updateModule(
@@ -1036,7 +1099,7 @@ export function AplusStudioPage() {
                           {draft.marketplace_id}
                         </span>
                         <span className="rounded-full border border-sky-300/20 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100">
-                          {draft.auto_translate ? "Translated" : "Original"}
+                          {draft.variant_role === "translated" ? "Translated" : "Original"}
                         </span>
                       </div>
                     </div>
@@ -1065,7 +1128,7 @@ export function AplusStudioPage() {
           <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Editor</p>
+                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Stage 2</p>
                 <h3 className="mt-2 text-[1.8rem] font-semibold leading-tight text-white">
                   {selectedDraft ? selectedDraft.product_title : "Draft editor"}
                 </h3>
@@ -1089,6 +1152,30 @@ export function AplusStudioPage() {
                 {hasGeneratedDraft ? (
                   <div className="mt-4">
                     <AplusScoreBadge score={optimizationScore} />
+                  </div>
+                ) : null}
+
+                {hasGeneratedDraft ? (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Language variants</p>
+                    <div className="flex flex-wrap gap-2">
+                      {availableVariantDrafts.map((draft) => (
+                        <button
+                          key={draft.id}
+                          type="button"
+                          onClick={() => void handleVariantSwitch(draft)}
+                          disabled={switchingVariantId !== null}
+                          className={[
+                            "rounded-full border px-3 py-2 text-xs font-medium transition",
+                            draft.id === selectedDraftId
+                              ? "border-sky-300/30 bg-sky-500/10 text-sky-100"
+                              : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",
+                          ].join(" ")}
+                        >
+                          {switchingVariantId === draft.id ? "Switching..." : formatVariantLabel(draft)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1193,10 +1280,11 @@ export function AplusStudioPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={acceptImprovementPreview}
-                      className="rounded-[1.25rem] bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-slate-100"
+                      onClick={() => void acceptImprovementPreview()}
+                      disabled={isApplyingImprovement}
+                      className="rounded-[1.25rem] bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      Accept changes
+                      {isApplyingImprovement ? "Applying..." : "Accept changes"}
                     </button>
                   </div>
                 </div>
