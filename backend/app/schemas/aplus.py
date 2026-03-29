@@ -49,6 +49,7 @@ class AplusDraftPayload(BaseModel):
 
 
 SupportedAplusLanguage = Literal["de-DE", "en-US", "en-GB", "fr-FR", "it-IT", "es-ES"]
+SupportedAplusImprovementCategory = Literal["structure", "clarity", "differentiation", "completeness"]
 
 
 class AplusReadinessIssue(BaseModel):
@@ -123,6 +124,47 @@ class AplusGenerateImageRequest(BaseModel):
 
 class AplusPublishRequest(BaseModel):
     draft_id: str
+
+
+class AplusImproveRequest(BaseModel):
+    draft_id: str
+    category: SupportedAplusImprovementCategory
+    draft_payload: AplusDraftPayload
+
+
+class AplusModuleImprovementPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    module_id: str = Field(min_length=8, max_length=64)
+    headline: str | None = Field(default=None, min_length=5, max_length=120)
+    body: str | None = Field(default=None, min_length=20, max_length=600)
+    bullets: list[str] | None = Field(default=None, min_length=0, max_length=4)
+
+
+class AplusDraftImprovementPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str = Field(min_length=12, max_length=400)
+    headline: str | None = Field(default=None, min_length=8, max_length=140)
+    subheadline: str | None = Field(default=None, min_length=12, max_length=180)
+    brand_story: str | None = Field(default=None, min_length=40, max_length=900)
+    key_features: list[str] | None = Field(default=None, min_length=3, max_length=6)
+    modules: list[AplusModuleImprovementPatch] = Field(default_factory=list, max_length=5)
+
+
+class AplusImprovementChange(BaseModel):
+    path: str
+    label: str
+    before: str
+    after: str
+
+
+class AplusImproveResponse(BaseModel):
+    category: SupportedAplusImprovementCategory
+    summary: str
+    issues: list[AplusOptimizationSuggestion]
+    improved_payload: AplusDraftPayload
+    changes: list[AplusImprovementChange]
 
 
 class AplusPublishJobResponse(BaseModel):

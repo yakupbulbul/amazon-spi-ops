@@ -5,11 +5,17 @@ import json
 from typing import Any
 
 import httpx
+from pydantic import BaseModel
 
 from app.core.config import Settings, settings
-from app.schemas.aplus import AplusDraftPayload
+from app.schemas.aplus import (
+    AplusDraftImprovementPatch,
+    AplusDraftPayload,
+    SupportedAplusImprovementCategory,
+)
 from app.services.ai.prompt_templates import (
     APLUS_SYSTEM_PROMPT,
+    build_aplus_improvement_prompt,
     build_aplus_translation_prompt,
     build_aplus_user_prompt,
     get_language_market_guidance,
@@ -56,7 +62,7 @@ class OpenAiAplusService:
                 "json_schema": {
                     "name": "amazon_aplus_draft",
                     "strict": True,
-                    "schema": self._openai_response_schema(),
+                    "schema": self._openai_response_schema(AplusDraftPayload),
                 },
             },
         }
@@ -118,7 +124,7 @@ class OpenAiAplusService:
                 "json_schema": {
                     "name": "amazon_aplus_translation",
                     "strict": True,
-                    "schema": self._openai_response_schema(),
+                    "schema": self._openai_response_schema(AplusDraftPayload),
                 },
             },
         }
@@ -156,6 +162,84 @@ class OpenAiAplusService:
             translated_payload=translated_payload,
         )
 
+    def improve_aplus_draft(
+        self,
+        *,
+        draft_payload: AplusDraftPayload,
+        category: SupportedAplusImprovementCategory,
+        issues: list[str],
+        language: str,
+        product_context: dict[str, Any],
+    ) -> tuple[AplusDraftPayload, str]:
+        if not self.settings.openai_api_key:
+            patch = self._mock_improvement_patch(
+                draft_payload=draft_payload,
+                category=category,
+                issues=issues,
+                language=language,
+            )
+            improved_payload = self._apply_improvement_patch(
+                original_payload=draft_payload,
+                improvement_patch=patch,
+            )
+            return improved_payload, patch.summary
+
+        payload = {
+            "model": self.settings.openai_model,
+            "temperature": 0.3,
+            "messages": [
+                {"role": "system", "content": APLUS_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": build_aplus_improvement_prompt(
+                        category=category,
+                        language=language,
+                        product_summary=self._format_product_summary(product_context),
+                        issues=issues,
+                        draft_payload=draft_payload.model_dump_json(indent=2),
+                    ),
+                },
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "amazon_aplus_improvement_patch",
+                    "strict": True,
+                    "schema": self._openai_response_schema(AplusDraftImprovementPatch),
+                },
+            },
+        }
+
+        with httpx.Client(timeout=90) as client:
+            response = client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.settings.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise ValueError(
+                    "OpenAI improvement request failed: "
+                    f"{response.status_code} {response.text}"
+                ) from exc
+
+        body = response.json()
+        message = body["choices"][0]["message"]
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("OpenAI did not return structured A+ improvement content.")
+
+        patch = AplusDraftImprovementPatch.model_validate_json(content)
+        improved_payload = self._apply_improvement_patch(
+            original_payload=draft_payload,
+            improvement_patch=patch,
+        )
+        return improved_payload, patch.summary
+
     @staticmethod
     def _format_product_summary(product_context: dict[str, Any]) -> str:
         lines = []
@@ -181,8 +265,8 @@ class OpenAiAplusService:
         return "\n".join(lines)
 
     @staticmethod
-    def _openai_response_schema() -> dict[str, Any]:
-        schema = AplusDraftPayload.model_json_schema()
+    def _openai_response_schema(schema_model: type[BaseModel] = AplusDraftPayload) -> dict[str, Any]:
+        schema = schema_model.model_json_schema()
         OpenAiAplusService._require_all_object_properties(schema)
         return schema
 
@@ -200,6 +284,224 @@ class OpenAiAplusService:
         if isinstance(node, list):
             for item in node:
                 OpenAiAplusService._require_all_object_properties(item)
+
+    @staticmethod
+    def _mock_improvement_patch(
+        *,
+        draft_payload: AplusDraftPayload,
+        category: SupportedAplusImprovementCategory,
+        issues: list[str],
+        language: str,
+    ) -> AplusDraftImprovementPatch:
+        summary = {
+            "structure": "Reframed the hero and supporting modules so the draft reads with clearer section roles.",
+            "clarity": "Shortened dense copy and made the benefits easier to scan quickly.",
+            "differentiation": "Replaced generic quality language with clearer product advantages over generic alternatives.",
+            "completeness": "Added practical context and clearer buying details without rewriting unrelated sections.",
+        }[category]
+        issue_hint = issues[0] if issues else ""
+        hero_module = next((module for module in draft_payload.modules if module.module_type == "hero"), None)
+        feature_modules = [module for module in draft_payload.modules if module.module_type == "feature"]
+
+        if language == "de-DE":
+            if category == "differentiation":
+                return AplusDraftImprovementPatch(
+                    summary=summary,
+                    subheadline="Konkreter Nutzen statt allgemeiner Qualitätsversprechen.",
+                    brand_story=f"{draft_payload.brand_story} Der Fokus liegt jetzt stärker auf dem spürbaren Unterschied gegenüber generischen Alternativen und darauf, warum dieser Vorteil im Alltag zählt.".strip(),
+                    key_features=[
+                        feature.replace("hochwertig", "so verarbeitet, dass Passform, Komfort oder Alltagseinsatz klarer profitieren")
+                        for feature in draft_payload.key_features
+                    ],
+                    modules=[
+                        {
+                            "module_id": hero_module.module_id if hero_module else draft_payload.modules[0].module_id,
+                            "headline": "Warum es im Alltag zählt",
+                            "body": f"{hero_module.body if hero_module else draft_payload.modules[0].body} Erkläre den konkreten Vorteil gegenüber generischen Alternativen statt nur Qualität zu behaupten.".strip(),
+                            "bullets": None,
+                        },
+                        *[
+                            {
+                                "module_id": module.module_id,
+                                "headline": module.headline.replace("Vorteile", "Konkrete Vorteile"),
+                                "body": f"{module.body} Benenne klar, welcher Nutzen entsteht und warum die Lösung präziser wirkt als eine generische Alternative.".strip(),
+                                "bullets": [
+                                    bullet.replace("hochwertig", "gezielt für den spürbaren Alltagsnutzen entwickelt")
+                                    for bullet in module.bullets
+                                ],
+                            }
+                            for module in feature_modules[:2]
+                        ],
+                    ],
+                )
+            if category == "clarity":
+                return AplusDraftImprovementPatch(
+                    summary=summary,
+                    headline="Klarer Nutzen auf einen Blick",
+                    subheadline=draft_payload.subheadline[:120].rstrip(". ") + ".",
+                    modules=[
+                        {
+                            "module_id": module.module_id,
+                            "headline": module.headline[:64].rstrip(". "),
+                            "body": " ".join(module.body.split(". ")[:2]).strip(),
+                            "bullets": module.bullets[:3],
+                        }
+                        for module in draft_payload.modules[:3]
+                    ],
+                )
+            if category == "structure":
+                return AplusDraftImprovementPatch(
+                    summary=summary,
+                    brand_story=f"{draft_payload.brand_story} {issue_hint}".strip(),
+                    modules=[
+                        {
+                            "module_id": draft_payload.modules[0].module_id,
+                            "headline": "Der Hauptnutzen zuerst",
+                            "body": f"{draft_payload.modules[0].body} Diese Sektion soll den Hauptkaufgrund zuerst verankern.".strip(),
+                            "bullets": draft_payload.modules[0].bullets,
+                        },
+                        *[
+                            {
+                                "module_id": module.module_id,
+                                "headline": module.headline,
+                                "body": f"{module.body} Diese Sektion unterstützt den Hero mit einem klar abgegrenzten Folgeargument.".strip(),
+                                "bullets": module.bullets,
+                            }
+                            for module in draft_payload.modules[1:3]
+                        ],
+                    ],
+                )
+            return AplusDraftImprovementPatch(
+                summary=summary,
+                brand_story=f"{draft_payload.brand_story} Ergänze Material-, Nutzungs- oder Einsatzdetails, damit offene Käuferfragen früher beantwortet werden.".strip(),
+                key_features=[
+                    *draft_payload.key_features[:2],
+                    "Erklärt genauer, wann, wie und für wen der Vorteil im Alltag spürbar wird",
+                    *draft_payload.key_features[2:],
+                ][:6],
+                modules=[
+                    {
+                        "module_id": module.module_id,
+                        "headline": module.headline,
+                        "body": f"{module.body} Füge eine konkrete Nutzungs- oder Materialerklärung hinzu, damit der Kaufkontext klarer wird.".strip(),
+                        "bullets": module.bullets,
+                    }
+                    for module in draft_payload.modules[:2]
+                ],
+            )
+
+        if category == "differentiation":
+            return AplusDraftImprovementPatch(
+                summary=summary,
+                subheadline="Sharper reasons to choose this over generic alternatives.",
+                brand_story=f"{draft_payload.brand_story} This version leans harder into the practical advantage the shopper gets versus a generic option.".strip(),
+                key_features=[
+                    feature.replace("high quality", "built to deliver a clearer everyday advantage")
+                    .replace("premium quality", "built to solve a more specific everyday need")
+                    for feature in draft_payload.key_features
+                ],
+                modules=[
+                    {
+                        "module_id": module.module_id,
+                        "headline": "A more specific advantage" if index == 0 else module.headline,
+                        "body": f"{module.body} Make the distinction versus a generic alternative explicit and shopper-relevant.".strip(),
+                        "bullets": [
+                            bullet.replace("high quality", "designed to create a more useful everyday result")
+                            .replace("premium quality", "designed around a clearer practical benefit")
+                            for bullet in module.bullets
+                        ],
+                    }
+                    for index, module in enumerate(draft_payload.modules[:3])
+                ],
+            )
+
+        if category == "clarity":
+            return AplusDraftImprovementPatch(
+                summary=summary,
+                headline="Clear value, faster",
+                subheadline=draft_payload.subheadline[:120].rstrip(". ") + ".",
+                modules=[
+                    {
+                        "module_id": module.module_id,
+                        "headline": module.headline[:64].rstrip(". "),
+                        "body": " ".join(module.body.split(". ")[:2]).strip(),
+                        "bullets": module.bullets[:3],
+                    }
+                    for module in draft_payload.modules[:3]
+                ],
+            )
+
+        if category == "structure":
+            return AplusDraftImprovementPatch(
+                summary=summary,
+                brand_story=f"{draft_payload.brand_story} Each section now reinforces a clearer editorial role in the overall A+ story.".strip(),
+                modules=[
+                    {
+                        "module_id": draft_payload.modules[0].module_id,
+                        "headline": "Lead with the main benefit",
+                        "body": f"{draft_payload.modules[0].body} This opening section now anchors the primary purchase reason first.".strip(),
+                        "bullets": draft_payload.modules[0].bullets,
+                    },
+                    *[
+                        {
+                            "module_id": module.module_id,
+                            "headline": module.headline,
+                            "body": f"{module.body} This module now supports the draft with a more distinct follow-on role.".strip(),
+                            "bullets": module.bullets,
+                        }
+                        for module in draft_payload.modules[1:3]
+                    ],
+                ],
+            )
+
+        return AplusDraftImprovementPatch(
+            summary=summary,
+            brand_story=f"{draft_payload.brand_story} Add more practical product detail so the shopper understands fit, use, and decision context earlier.".strip(),
+            key_features=[
+                *draft_payload.key_features[:2],
+                "Explains a practical usage detail the shopper would otherwise have to infer",
+                *draft_payload.key_features[2:],
+            ][:6],
+            modules=[
+                {
+                    "module_id": module.module_id,
+                    "headline": module.headline,
+                    "body": f"{module.body} Add one practical detail about use, fit, or care so the section answers a real shopper question.".strip(),
+                    "bullets": module.bullets,
+                }
+                for module in draft_payload.modules[:2]
+            ],
+        )
+
+    @staticmethod
+    def _apply_improvement_patch(
+        *,
+        original_payload: AplusDraftPayload,
+        improvement_patch: AplusDraftImprovementPatch,
+    ) -> AplusDraftPayload:
+        merged_payload = original_payload.model_dump(mode="json")
+
+        for field in ["headline", "subheadline", "brand_story"]:
+            value = getattr(improvement_patch, field)
+            if isinstance(value, str) and value.strip():
+                merged_payload[field] = value
+
+        if improvement_patch.key_features is not None:
+            merged_payload["key_features"] = improvement_patch.key_features
+
+        module_patches = {patch.module_id: patch for patch in improvement_patch.modules}
+        for module in merged_payload["modules"]:
+            patch = module_patches.get(module.get("module_id"))
+            if patch is None:
+                continue
+            if patch.headline:
+                module["headline"] = patch.headline
+            if patch.body:
+                module["body"] = patch.body
+            if patch.bullets is not None:
+                module["bullets"] = patch.bullets
+
+        return AplusDraftPayload.model_validate(merged_payload)
 
     @staticmethod
     def _mock_draft(

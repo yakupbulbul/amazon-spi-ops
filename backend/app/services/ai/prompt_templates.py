@@ -122,3 +122,55 @@ def build_aplus_translation_prompt(
         {draft_payload}
         """
     ).strip()
+
+
+def build_aplus_improvement_prompt(
+    *,
+    category: str,
+    language: str,
+    product_summary: str,
+    issues: list[str],
+    draft_payload: str,
+) -> str:
+    category_guidance = {
+        "structure": "Improve hierarchy, section roles, and flow so each section has a clearer job without rewriting unrelated sections.",
+        "clarity": "Tighten headings, simplify dense copy, and make benefits easier to scan quickly.",
+        "differentiation": "Replace generic quality language with concrete shopper benefits and clearer alternative framing.",
+        "completeness": "Add missing practical detail, usage explanation, and buying-context clarity where needed.",
+    }.get(category, "Improve only the targeted category without regenerating the draft.")
+
+    issue_block = "\n".join(f"- {issue}" for issue in issues) or "- No explicit issues supplied."
+
+    return dedent(
+        f"""
+        Improve this Amazon A+ draft for one category only.
+
+        Category:
+        {category}
+
+        Product summary:
+        {product_summary}
+
+        Draft language:
+        {language}
+
+        Improvement intent:
+        {category_guidance}
+
+        Specific issues to address:
+        {issue_block}
+
+        Rules:
+        - Return only JSON matching the provided patch schema.
+        - Do not regenerate the entire draft.
+        - Rewrite only shopper-facing text that is relevant to the requested category.
+        - Do not change module_id values.
+        - Do not change image fields, asset references, overlay text, compliance notes, or any operational metadata.
+        - Leave non-targeted sections as null in the patch.
+        - Preserve the existing module count and module order.
+        - Keep the copy marketplace-safe, concise, and conversion-focused.
+
+        Current draft:
+        {draft_payload}
+        """
+    ).strip()
