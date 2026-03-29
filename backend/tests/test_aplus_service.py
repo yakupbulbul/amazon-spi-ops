@@ -118,6 +118,56 @@ class StubAmazonService:
         }
 
 
+class ApprovedAmazonService(StubAmazonService):
+    def get_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        included_data_set: list[str],
+    ) -> dict[str, object]:
+        return {
+            "warnings": [{"message": "Awaiting moderation replication"}],
+            "contentRecord": {
+                "contentReferenceKey": content_reference_key,
+                "contentMetadata": {
+                    "name": "Publishable Product A+ Content",
+                    "marketplaceId": marketplace_id,
+                    "status": "APPROVED",
+                    "badgeSet": [],
+                    "updateTime": "2026-03-29T00:00:00Z",
+                },
+            },
+        }
+
+
+class RejectedAmazonService(StubAmazonService):
+    def get_aplus_content_document(
+        self,
+        *,
+        marketplace_id: str | None,
+        content_reference_key: str,
+        included_data_set: list[str],
+    ) -> dict[str, object]:
+        return {
+            "warnings": [],
+            "errors": [
+                {"message": "Image crop does not match the supported module requirements."},
+                {"message": "Hero alt text exceeds the approved length."},
+            ],
+            "contentRecord": {
+                "contentReferenceKey": content_reference_key,
+                "contentMetadata": {
+                    "name": "Publishable Product A+ Content",
+                    "marketplaceId": marketplace_id,
+                    "status": "REJECTED",
+                    "badgeSet": [],
+                    "updateTime": "2026-03-29T00:00:00Z",
+                },
+            },
+        }
+
+
 def build_publish_product() -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(),
@@ -763,3 +813,69 @@ def test_publish_to_amazon_rejects_editorial_only_modules() -> None:
             assert "Unsupported modules present: comparison" in str(exc)
         else:
             raise AssertionError("Expected editorial-only comparison modules to block real publish.")
+
+
+def test_refresh_publish_job_status_marks_approved_jobs_and_serializes_warnings() -> None:
+    product = build_publish_product()
+    draft_id = uuid4()
+    session = FakeSession()
+    session.registry[("Product", product.id)] = product
+    service = AplusService(
+        session,
+        ApprovedAmazonService(),  # type: ignore[arg-type]
+        None,  # type: ignore[arg-type]
+        MediaStorageService(root=Path("/tmp/aplus-status"), url_prefix="/media"),
+    )
+    draft = SimpleNamespace(product_id=product.id, status="ready_to_publish")
+    publish_job = SimpleNamespace(
+        id=uuid4(),
+        draft_id=draft_id,
+        status="submitted",
+        external_submission_id="REF-123",
+        response_payload={},
+        error_message=None,
+        submitted_at=None,
+        completed_at=None,
+        created_at=service._now(),
+    )
+
+    service._refresh_publish_job_status(draft=draft, publish_job=publish_job)
+    serialized = service._serialize_publish_job(publish_job)
+
+    assert publish_job.status == "approved"
+    assert draft.status == "published"
+    assert serialized.warnings == ["Awaiting moderation replication"]
+
+
+def test_refresh_publish_job_status_marks_rejected_jobs_and_keeps_amazon_reasons() -> None:
+    product = build_publish_product()
+    session = FakeSession()
+    session.registry[("Product", product.id)] = product
+    service = AplusService(
+        session,
+        RejectedAmazonService(),  # type: ignore[arg-type]
+        None,  # type: ignore[arg-type]
+        MediaStorageService(root=Path("/tmp/aplus-status-rejected"), url_prefix="/media"),
+    )
+    draft = SimpleNamespace(product_id=product.id, status="ready_to_publish")
+    publish_job = SimpleNamespace(
+        id=uuid4(),
+        draft_id=uuid4(),
+        status="submitted",
+        external_submission_id="REF-REJECTED",
+        response_payload={"validationResponse": {"warnings": []}},
+        error_message=None,
+        submitted_at=service._now(),
+        completed_at=None,
+        created_at=service._now(),
+    )
+
+    service._refresh_publish_job_status(draft=draft, publish_job=publish_job)
+    serialized = service._serialize_publish_job(publish_job)
+
+    assert publish_job.status == "rejected"
+    assert draft.status == "failed"
+    assert publish_job.error_message == "Image crop does not match the supported module requirements.; Hero alt text exceeds the approved length."
+    assert serialized.rejection_reasons == [
+        "Image crop does not match the supported module requirements.; Hero alt text exceeds the approved length."
+    ]

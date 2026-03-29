@@ -18,6 +18,7 @@ from app.schemas.aplus import (
     AplusDraftPayload,
     AplusDraftResponse,
     AplusModulePayload,
+    AplusPublishJobResponse,
     AplusPublishResponse,
     SupportedAplusLanguage,
 )
@@ -25,6 +26,7 @@ from app.services.ai.openai_service import OpenAiAplusService
 from app.services.aplus_optimization import build_aplus_optimization_report
 from app.services.aplus_readiness import build_aplus_readiness_report
 from app.services.amazon.aplus_contract import AmazonContractMapper, PreparedAmazonImageAsset
+from app.services.amazon.exceptions import AmazonRequestError
 from app.services.amazon.service import AmazonSpApiService
 from app.services.media_storage import MediaStorageService
 from app.services.notification_service import NotificationService
@@ -47,6 +49,25 @@ class AplusService:
         self.openai_service = openai_service
         self.media_storage_service = media_storage_service or MediaStorageService()
         self.contract_mapper = AmazonContractMapper()
+
+    def get_latest_publish_job(
+        self,
+        *,
+        draft_id: UUID,
+        refresh: bool = True,
+    ) -> AplusPublishJobResponse | None:
+        draft = self._get_draft(draft_id)
+        publish_job = self._get_latest_publish_job_record(draft_id=draft.id)
+        if publish_job is None:
+            return None
+
+        if refresh and publish_job.external_submission_id and publish_job.status in {"submitted", "in_review"}:
+            self._refresh_publish_job_status(draft=draft, publish_job=publish_job)
+            self.db_session.commit()
+            self.db_session.refresh(publish_job)
+            self.db_session.refresh(draft)
+
+        return self._serialize_publish_job(publish_job)
 
     def list_drafts(self) -> AplusDraftListResponse:
         from app.models.entities import AplusDraft, Product
@@ -141,8 +162,16 @@ class AplusService:
         product = self._get_product(draft.product_id)
         notification_service = NotificationService(self.db_session)
         timestamp = self._now()
+        publish_job = self._create_publish_job(draft_id=draft.id, created_at=timestamp)
+        self.db_session.add(publish_job)
+        self.db_session.commit()
+        self.db_session.refresh(publish_job)
 
         try:
+            if not settings.aplus_live_publish_enabled:
+                raise ValueError(
+                    "Live Amazon A+ publish is disabled. Set APLUS_LIVE_PUBLISH_ENABLED=true in the dedicated live test environment before submitting."
+                )
             if draft.validated_payload is None:
                 raise ValueError("Validate the draft before preparing the publish payload.")
 
@@ -164,32 +193,22 @@ class AplusService:
                 product=product,
                 draft_payload=validated_payload,
                 target_language=draft.target_language,
+                publish_job=publish_job,
             )
-
-            from app.models.entities import AplusPublishJob
-
-            publish_job = AplusPublishJob(
-                draft_id=draft.id,
-                status=JobStatus.SUCCEEDED.value,
-                external_submission_id=str(prepared_payload["contentReferenceKey"]),
-                submitted_at=timestamp,
-                completed_at=timestamp,
-                created_at=timestamp,
-            )
-            self.db_session.add(publish_job)
-            draft.status = DraftStatus.READY_TO_PUBLISH.value
+            self._refresh_publish_job_status(draft=draft, publish_job=publish_job)
             notification = notification_service.queue_event_notification(
                 event_type="aplus_publish",
                 source="aplus_studio",
-                event_status=JobStatus.SUCCEEDED.value,
+                event_status=publish_job.status,
                 event_payload={
                     "sku": product.sku,
                     "asin": product.asin,
                     "draft_id": str(draft.id),
                     "marketplace_id": product.marketplace_id,
+                    "content_reference_key": publish_job.external_submission_id,
                 },
                 notification_type="aplus_publish_success",
-                message_preview=f"A+ publish payload prepared for {product.sku}.",
+                message_preview=f"A+ content submitted to Amazon for {product.sku}.",
                 occurred_at=timestamp,
             )
             self.db_session.commit()
@@ -202,22 +221,15 @@ class AplusService:
                 publish_job_id=str(publish_job.id),
                 status=publish_job.status,
                 message=(
-                    "Submitted the A+ content document to Amazon for review using the supported real publish subset."
+                    "Submitted the A+ content document to Amazon using the supported real publish subset."
                 ),
+                publish_job=self._serialize_publish_job(publish_job),
                 prepared_payload=prepared_payload,
             )
         except Exception as exc:
-            from app.models.entities import AplusPublishJob
-
-            publish_job = AplusPublishJob(
-                draft_id=draft.id,
-                status=JobStatus.FAILED.value,
-                error_message=str(exc)[:1024],
-                submitted_at=timestamp,
-                completed_at=timestamp,
-                created_at=timestamp,
-            )
-            self.db_session.add(publish_job)
+            publish_job.status = "failed"
+            publish_job.error_message = str(exc)[:1024]
+            publish_job.completed_at = timestamp
             notification = notification_service.queue_event_notification(
                 event_type="aplus_publish",
                 source="aplus_studio",
@@ -242,12 +254,29 @@ class AplusService:
         product: Product,
         draft_payload: AplusDraftPayload,
         target_language: str,
+        publish_job=None,
     ) -> dict[str, object]:
         locale = target_language or self._marketplace_locale(product.marketplace_id)
         prepared_assets = self._prepare_amazon_assets(
             product=product,
             draft_payload=draft_payload,
         )
+        if publish_job is not None:
+            self._set_publish_job_state(
+                publish_job=publish_job,
+                status="assets_prepared",
+                response_payload={
+                    "assetPreparation": {
+                        module_id: {
+                            "uploadDestinationId": prepared_asset.upload_destination_id,
+                            "width": prepared_asset.width_pixels,
+                            "height": prepared_asset.height_pixels,
+                            "assetId": prepared_asset.asset_id,
+                        }
+                        for module_id, prepared_asset in prepared_assets.items()
+                    }
+                },
+            )
         content_document_request = self.contract_mapper.map_content_document(
             product_title=product.title,
             locale=locale,
@@ -266,6 +295,18 @@ class AplusService:
             raise ValueError(
                 "Amazon validation rejected the A+ content document: "
                 + "; ".join(error.get("message", "Unknown validation error") for error in validation_errors[:5])
+            )
+        if publish_job is not None:
+            self._set_publish_job_state(
+                publish_job=publish_job,
+                status="validated",
+                response_payload={
+                    "assetPreparation": publish_job.response_payload.get("assetPreparation", {})
+                    if publish_job.response_payload
+                    else {},
+                    "contentDocumentRequest": request_payload,
+                    "validationResponse": validation_response,
+                },
             )
 
         create_response = self.amazon_service.create_aplus_content_document(
@@ -286,6 +327,23 @@ class AplusService:
             marketplace_id=product.marketplace_id,
             content_reference_key=content_reference_key,
         )
+        if publish_job is not None:
+            publish_job.external_submission_id = content_reference_key
+            publish_job.submitted_at = self._now()
+            self._set_publish_job_state(
+                publish_job=publish_job,
+                status="submitted",
+                response_payload={
+                    "assetPreparation": publish_job.response_payload.get("assetPreparation", {})
+                    if publish_job.response_payload
+                    else {},
+                    "contentDocumentRequest": request_payload,
+                    "validationResponse": validation_response,
+                    "createContentDocumentResponse": create_response,
+                    "asinRelationsResponse": asin_relations_response,
+                    "approvalSubmissionResponse": approval_response,
+                },
+            )
         content_status = self.amazon_service.get_aplus_content_document(
             marketplace_id=product.marketplace_id,
             content_reference_key=content_reference_key,
@@ -571,6 +629,117 @@ class AplusService:
             created_at=draft.created_at,
             updated_at=draft.updated_at,
         )
+
+    def _serialize_publish_job(self, publish_job) -> AplusPublishJobResponse:
+        response_payload = publish_job.response_payload or {}
+        rejection_reasons = self._extract_publish_job_messages(response_payload, key="errors")
+        warnings = self._extract_publish_job_messages(response_payload, key="warnings")
+        if publish_job.error_message and publish_job.status == "rejected":
+            rejection_reasons = [publish_job.error_message]
+
+        return AplusPublishJobResponse(
+            id=str(publish_job.id),
+            draft_id=str(publish_job.draft_id),
+            status=publish_job.status,
+            content_reference_key=publish_job.external_submission_id,
+            error_message=publish_job.error_message,
+            rejection_reasons=rejection_reasons,
+            warnings=warnings,
+            submitted_at=publish_job.submitted_at,
+            completed_at=publish_job.completed_at,
+            created_at=publish_job.created_at,
+        )
+
+    def _create_publish_job(self, *, draft_id: UUID, created_at: datetime):
+        from app.models.entities import AplusPublishJob
+
+        return AplusPublishJob(
+            draft_id=draft_id,
+            status="draft",
+            created_at=created_at,
+        )
+
+    def _get_latest_publish_job_record(self, *, draft_id: UUID):
+        from app.models.entities import AplusPublishJob
+
+        return self.db_session.execute(
+            select(AplusPublishJob)
+            .where(AplusPublishJob.draft_id == draft_id)
+            .order_by(AplusPublishJob.created_at.desc())
+        ).scalar_one_or_none()
+
+    def _refresh_publish_job_status(self, *, draft: AplusDraft, publish_job) -> None:
+        if not publish_job.external_submission_id:
+            return
+        product = self._get_product(draft.product_id)
+        try:
+            content_status = self.amazon_service.get_aplus_content_document(
+                marketplace_id=product.marketplace_id,
+                content_reference_key=publish_job.external_submission_id,
+                included_data_set=["METADATA"],
+            )
+        except AmazonRequestError as exc:
+            publish_job.error_message = str(exc)[:1024]
+            return
+
+        response_payload = dict(publish_job.response_payload or {})
+        response_payload["contentRecord"] = content_status.get("contentRecord")
+        response_payload["warnings"] = content_status.get("warnings") or []
+        response_payload["errors"] = content_status.get("errors") or []
+        response_payload["statusRefresh"] = {
+            "checkedAt": self._now().isoformat(),
+        }
+        publish_job.response_payload = response_payload
+
+        content_metadata = (content_status.get("contentRecord") or {}).get("contentMetadata") or {}
+        amazon_status = str(content_metadata.get("status") or "").upper()
+        if amazon_status == "APPROVED":
+            publish_job.status = "approved"
+            publish_job.completed_at = self._now()
+            draft.status = DraftStatus.PUBLISHED.value
+            publish_job.error_message = None
+        elif amazon_status == "REJECTED":
+            publish_job.status = "rejected"
+            publish_job.completed_at = self._now()
+            draft.status = DraftStatus.FAILED.value
+            reasons = self._extract_publish_job_messages(response_payload, key="errors")
+            publish_job.error_message = "; ".join(reasons[:3]) if reasons else "Amazon rejected the A+ content document."
+        elif amazon_status == "SUBMITTED":
+            publish_job.status = "in_review"
+            draft.status = DraftStatus.READY_TO_PUBLISH.value
+        elif amazon_status == "DRAFT":
+            publish_job.status = "submitted"
+            draft.status = DraftStatus.READY_TO_PUBLISH.value
+
+    def _set_publish_job_state(
+        self,
+        *,
+        publish_job,
+        status: str,
+        response_payload: dict[str, object],
+    ) -> None:
+        current_payload = dict(publish_job.response_payload or {})
+        current_payload.update(response_payload)
+        publish_job.status = status
+        publish_job.response_payload = current_payload
+        self.db_session.commit()
+        self.db_session.refresh(publish_job)
+
+    @staticmethod
+    def _extract_publish_job_messages(response_payload: dict[str, object], *, key: str) -> list[str]:
+        values = response_payload.get(key)
+        if not isinstance(values, list):
+            return []
+        messages: list[str] = []
+        for item in values:
+            if isinstance(item, str):
+                messages.append(item)
+                continue
+            if isinstance(item, dict):
+                message = item.get("message") or item.get("details") or item.get("code")
+                if isinstance(message, str):
+                    messages.append(message)
+        return messages[:10]
 
     @staticmethod
     def _now() -> datetime:

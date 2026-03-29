@@ -18,6 +18,7 @@ from app.schemas.aplus import (
     AplusDraftResponse,
     AplusGenerateImageRequest,
     AplusGenerateRequest,
+    AplusPublishJobResponse,
     AplusPublishRequest,
     AplusPublishResponse,
     AplusValidateRequest,
@@ -176,3 +177,22 @@ def publish_aplus_draft(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail) from exc
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.get("/publish-jobs/latest", response_model=AplusPublishJobResponse | None)
+def read_latest_aplus_publish_job(
+    draft_id: str = Query(...),
+    refresh: bool = Query(default=True),
+    _: User = Depends(get_current_user),
+    aplus_service: AplusService = Depends(get_aplus_service),
+) -> AplusPublishJobResponse | None:
+    try:
+        return aplus_service.get_latest_publish_job(
+            draft_id=UUID(draft_id),
+            refresh=refresh,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "A+ draft not found.":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail) from exc

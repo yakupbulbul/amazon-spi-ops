@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
     openai_image_model: str = Field(default="gpt-image-1", alias="OPENAI_IMAGE_MODEL")
+    aplus_live_publish_enabled: bool = Field(default=False, alias="APLUS_LIVE_PUBLISH_ENABLED")
     slack_webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
     aws_region: str = Field(default="", alias="AWS_REGION")
     sp_api_endpoint: str = Field(
