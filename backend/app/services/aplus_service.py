@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from hashlib import md5
 from io import BytesIO
 from typing import TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import or_, select
@@ -101,37 +101,61 @@ class AplusService:
         product = self._get_product(product_id)
         effective_target_language = target_language or source_language
         product_context = self._build_product_context(product=product)
-        draft_payload = self.openai_service.generate_aplus_draft(
+        original_payload = self.openai_service.generate_aplus_draft(
             product_context=product_context,
             brand_tone=brand_tone,
             positioning=positioning,
             source_language=source_language,
         )
-        if auto_translate:
-            draft_payload = self.openai_service.translate_aplus_draft(
-                draft_payload=draft_payload,
-                source_language=source_language,
-                target_language=effective_target_language,
-            )
 
         from app.models.entities import AplusDraft
 
-        draft = AplusDraft(
+        variant_group_id = str(uuid4())
+        original_draft = AplusDraft(
             product_id=product.id,
             status=DraftStatus.DRAFT.value,
             brand_tone=brand_tone,
             positioning=positioning,
+            variant_group_id=variant_group_id,
+            variant_role="original",
             source_language=source_language,
-            target_language=effective_target_language,
-            auto_translate=auto_translate,
-            draft_payload=draft_payload.model_dump(mode="json"),
+            target_language=source_language,
+            auto_translate=False,
+            draft_payload=original_payload.model_dump(mode="json"),
             validated_payload=None,
             created_by_id=requested_by.id,
         )
-        self.db_session.add(draft)
+        self.db_session.add(original_draft)
+
+        response_draft = original_draft
+        if auto_translate:
+            translated_payload = self.openai_service.translate_aplus_draft(
+                draft_payload=original_payload,
+                source_language=source_language,
+                target_language=effective_target_language,
+            )
+            translated_draft = AplusDraft(
+                product_id=product.id,
+                status=DraftStatus.DRAFT.value,
+                brand_tone=brand_tone,
+                positioning=positioning,
+                variant_group_id=variant_group_id,
+                variant_role="translated",
+                source_language=source_language,
+                target_language=effective_target_language,
+                auto_translate=True,
+                draft_payload=translated_payload.model_dump(mode="json"),
+                validated_payload=None,
+                created_by_id=requested_by.id,
+            )
+            self.db_session.add(translated_draft)
+            response_draft = translated_draft
+
         self.db_session.commit()
-        self.db_session.refresh(draft)
-        return self._serialize_draft(draft=draft, product=product)
+        self.db_session.refresh(original_draft)
+        if response_draft is not original_draft:
+            self.db_session.refresh(response_draft)
+        return self._serialize_draft(draft=response_draft, product=product)
 
     def validate_draft(self, *, draft_id: UUID, draft_payload: AplusDraftPayload) -> AplusDraftResponse:
         draft = self._get_draft(draft_id)
@@ -140,12 +164,37 @@ class AplusService:
             draft_payload=draft_payload,
             checked_payload="validated",
         )
-        draft.validated_payload = draft_payload.model_dump(mode="json")
+        payload_json = draft_payload.model_dump(mode="json")
+        draft.draft_payload = payload_json
+        draft.validated_payload = payload_json
         draft.status = (
             DraftStatus.READY_TO_PUBLISH.value
             if readiness_report.is_publish_ready
             else DraftStatus.VALIDATED.value
         )
+        self.db_session.commit()
+        self.db_session.refresh(draft)
+        return self._serialize_draft(draft=draft, product=product)
+
+    def save_draft(self, *, draft_id: UUID, draft_payload: AplusDraftPayload) -> AplusDraftResponse:
+        draft = self._get_draft(draft_id)
+        product = self._get_product(draft.product_id)
+        payload_json = draft_payload.model_dump(mode="json")
+        draft.draft_payload = payload_json
+
+        if draft.validated_payload is not None and draft.validated_payload == payload_json:
+            readiness_report = build_aplus_readiness_report(
+                draft_payload=draft_payload,
+                checked_payload="validated",
+            )
+            draft.status = (
+                DraftStatus.READY_TO_PUBLISH.value
+                if readiness_report.is_publish_ready
+                else DraftStatus.VALIDATED.value
+            )
+        else:
+            draft.status = DraftStatus.DRAFT.value
+
         self.db_session.commit()
         self.db_session.refresh(draft)
         return self._serialize_draft(draft=draft, product=product)
@@ -741,10 +790,18 @@ class AplusService:
         return product
 
     def _serialize_draft(self, *, draft: AplusDraft, product: Product) -> AplusDraftResponse:
-        checked_payload = "validated" if draft.validated_payload is not None else "draft"
-        active_payload = AplusDraftPayload.model_validate(
-            draft.validated_payload or draft.draft_payload
+        draft_payload = AplusDraftPayload.model_validate(draft.draft_payload)
+        validated_payload = (
+            AplusDraftPayload.model_validate(draft.validated_payload)
+            if draft.validated_payload is not None
+            else None
         )
+        has_validated_match = (
+            validated_payload is not None
+            and validated_payload.model_dump(mode="json") == draft_payload.model_dump(mode="json")
+        )
+        checked_payload = "validated" if has_validated_match else "draft"
+        active_payload = validated_payload if has_validated_match and validated_payload is not None else draft_payload
         return AplusDraftResponse(
             id=str(draft.id),
             product_id=str(product.id),
@@ -752,18 +809,16 @@ class AplusService:
             product_asin=product.asin,
             product_title=product.title,
             marketplace_id=product.marketplace_id,
+            variant_group_id=draft.variant_group_id,
+            variant_role=draft.variant_role,
             status=draft.status,
             brand_tone=draft.brand_tone,
             positioning=draft.positioning,
             source_language=draft.source_language,
             target_language=draft.target_language,
             auto_translate=draft.auto_translate,
-            draft_payload=AplusDraftPayload.model_validate(draft.draft_payload),
-            validated_payload=(
-                AplusDraftPayload.model_validate(draft.validated_payload)
-                if draft.validated_payload is not None
-                else None
-            ),
+            draft_payload=draft_payload,
+            validated_payload=validated_payload,
             readiness_report=build_aplus_readiness_report(
                 draft_payload=active_payload,
                 checked_payload=checked_payload,

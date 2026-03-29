@@ -114,6 +114,11 @@ class AplusValidateRequest(BaseModel):
     draft_payload: AplusDraftPayload
 
 
+class AplusSaveRequest(BaseModel):
+    draft_id: str
+    draft_payload: AplusDraftPayload
+
+
 class AplusGenerateImageRequest(BaseModel):
     draft_id: str
     module_id: str = Field(min_length=8, max_length=64)
@@ -203,6 +208,8 @@ class AplusDraftResponse(BaseModel):
     product_asin: str
     product_title: str
     marketplace_id: str
+    variant_group_id: str
+    variant_role: Literal["original", "translated"]
     status: str
     brand_tone: str | None
     positioning: str | None

@@ -21,6 +21,7 @@ from app.schemas.aplus import (
     AplusImproveRequest,
     AplusImproveResponse,
     AplusPublishJobResponse,
+    AplusSaveRequest,
     AplusPublishRequest,
     AplusPublishResponse,
     AplusValidateRequest,
@@ -162,6 +163,24 @@ def validate_aplus_draft(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/save", response_model=AplusDraftResponse)
+def save_aplus_draft(
+    payload: AplusSaveRequest,
+    _: User = Depends(get_current_user),
+    aplus_service: AplusService = Depends(get_aplus_service),
+) -> AplusDraftResponse:
+    try:
+        return aplus_service.save_draft(
+            draft_id=UUID(payload.draft_id),
+            draft_payload=payload.draft_payload,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "A+ draft not found.":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail) from exc
 
 
 @router.post("/improve", response_model=AplusImproveResponse)

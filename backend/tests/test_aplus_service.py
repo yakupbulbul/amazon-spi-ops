@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -5,6 +6,7 @@ from uuid import uuid4
 
 from app.core.config import Settings
 from app.schemas.aplus import AplusDraftPayload
+from app.services.aplus_optimization import build_aplus_optimization_report
 from app.services.aplus_readiness import build_aplus_readiness_report
 from app.services.ai.openai_service import OpenAiAplusService
 from app.services.aplus_service import AplusService
@@ -14,10 +16,32 @@ from app.services.media_storage import MediaStorageService
 class FakeSession:
     def __init__(self) -> None:
         self.registry: dict[tuple[str, object], object] = {}
+        self.added: list[object] = []
 
     def get(self, model: object, key: object) -> object | None:
         model_name = getattr(model, "__name__", str(model))
         return self.registry.get((model_name, key))
+
+    def add(self, obj: object) -> None:
+        model_name = type(obj).__name__
+        if getattr(obj, "id", None) is None:
+            obj.id = uuid4()
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = datetime.now(timezone.utc)
+        if getattr(obj, "updated_at", None) is None:
+            obj.updated_at = obj.created_at
+        self.registry[(model_name, obj.id)] = obj
+        self.added.append(obj)
+
+    def commit(self) -> None:
+        for obj in self.added:
+            if getattr(obj, "updated_at", None) is None:
+                obj.updated_at = datetime.now(timezone.utc)
+        return None
+
+    def refresh(self, obj: object) -> None:
+        model_name = type(obj).__name__
+        self.registry[(model_name, obj.id)] = obj
 
     def flush(self) -> None:
         return None
@@ -1007,3 +1031,129 @@ def test_refresh_publish_job_status_marks_rejected_jobs_and_keeps_amazon_reasons
     assert serialized.rejection_reasons == [
         "Image crop does not match the supported module requirements.; Hero alt text exceeds the approved length."
     ]
+
+
+def test_generate_draft_creates_original_and_translated_variants() -> None:
+    from app.models.entities import Product
+
+    db_session = FakeSession()
+    product = Product(
+        id=uuid4(),
+        sku="DF-LPER-Z2CC",
+        asin="B0GS3SHBNH",
+        title="Seat Cover",
+        brand="PYATO",
+        marketplace_id="A1PA6795UKMFR9",
+        low_stock_threshold=10,
+        is_active=True,
+    )
+    db_session.registry[("Product", product.id)] = product
+
+    service = AplusService(
+        db_session,
+        StubAmazonService(),
+        OpenAiAplusService(Settings(OPENAI_API_KEY="", OPENAI_MODEL="gpt-4o-mini")),
+    )
+    service._build_product_context = lambda *, product: {
+        "title": product.title,
+        "brand": product.brand,
+        "sku": product.sku,
+        "asin": product.asin,
+        "marketplace_id": product.marketplace_id,
+        "inventory": None,
+    }
+
+    response = service.generate_draft(
+        product_id=product.id,
+        brand_tone="practical and premium",
+        positioning="car interior comfort",
+        source_language="de-DE",
+        target_language="en-GB",
+        auto_translate=True,
+        requested_by=SimpleNamespace(id=uuid4()),
+    )
+
+    stored_drafts = [item for item in db_session.added if type(item).__name__ == "AplusDraft"]
+
+    assert len(stored_drafts) == 2
+    assert {draft.variant_role for draft in stored_drafts} == {"original", "translated"}
+    assert len({draft.variant_group_id for draft in stored_drafts}) == 1
+    assert response.variant_role == "translated"
+    assert response.target_language == "en-GB"
+
+
+def test_save_draft_refreshes_working_payload_and_optimization_state() -> None:
+    original_payload = build_publish_payload(
+        [
+            {
+                "module_type": "hero",
+                "headline": "Hero promise",
+                "body": "A concrete hero body that explains the main shopper outcome in a grounded way.",
+                "bullets": ["Primary benefit", "Secondary reassurance"],
+                "image_brief": "Hero image direction for publish testing.",
+            },
+            {
+                "module_type": "feature",
+                "headline": "Feature detail",
+                "body": "Specific supporting body copy with practical detail and clear usage context.",
+                "bullets": ["Practical use case", "Material detail"],
+                "image_brief": "Feature image direction for publish testing.",
+            },
+            {
+                "module_type": "faq",
+                "headline": "Confidence builder",
+                "body": "Answers a final shopper hesitation with concrete reassurance and clear next-step context.",
+                "bullets": ["Clear reassurance"],
+                "image_brief": "FAQ image direction for publish testing.",
+            },
+        ]
+    )
+    improved_payload = original_payload.model_copy(
+        update={"headline": "Sharper shopper outcome headline"},
+        deep=True,
+    )
+
+    draft_id = uuid4()
+    product_id = uuid4()
+    draft = SimpleNamespace(
+        id=draft_id,
+        product_id=product_id,
+        variant_group_id=str(uuid4()),
+        variant_role="original",
+        status="ready_to_publish",
+        brand_tone="practical and premium",
+        positioning="car interior comfort",
+        source_language="de-DE",
+        target_language="de-DE",
+        auto_translate=False,
+        draft_payload=original_payload.model_dump(mode="json"),
+        validated_payload=original_payload.model_dump(mode="json"),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    product = SimpleNamespace(
+        id=product_id,
+        sku="DF-LPER-Z2CC",
+        asin="B0GS3SHBNH",
+        title="Seat Cover",
+        marketplace_id="A1PA6795UKMFR9",
+    )
+
+    db_session = FakeSession()
+    db_session.registry[("AplusDraft", draft_id)] = draft
+    db_session.registry[("Product", product_id)] = product
+
+    service = AplusService(
+        db_session,
+        StubAmazonService(),
+        OpenAiAplusService(Settings(OPENAI_API_KEY="", OPENAI_MODEL="gpt-4o-mini")),
+    )
+
+    response = service.save_draft(draft_id=draft_id, draft_payload=improved_payload)
+
+    assert response.draft_payload.headline == "Sharper shopper outcome headline"
+    assert response.optimization_report.overall_score == build_aplus_optimization_report(
+        draft_payload=improved_payload
+    ).overall_score
+    assert response.readiness_report.checked_payload == "draft"
+    assert response.status == "draft"
