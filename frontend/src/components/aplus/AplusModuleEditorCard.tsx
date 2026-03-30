@@ -324,13 +324,26 @@ export function AplusModuleEditorCard({
             )}
 
             <label className="block space-y-2">
-              <span className="text-sm text-slate-300">Image brief</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-slate-300">Image brief</span>
+                <span className="text-xs text-slate-500">
+                  Amazon alt text auto-uses the first 100 characters
+                </span>
+              </div>
               <textarea
                 value={module.image_brief}
                 onChange={(event) => onUpdate({ image_brief: event.target.value })}
                 rows={4}
                 className="w-full rounded-[1.1rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-white outline-none"
               />
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-slate-500">
+                  Keep the first sentence concise. Longer creative direction can continue after that.
+                </span>
+                <span className={module.image_brief.trim().length > 100 ? "text-amber-300" : "text-slate-500"}>
+                  {module.image_brief.trim().length}/100 alt-text chars
+                </span>
+              </div>
             </label>
           </div>
         </div>
