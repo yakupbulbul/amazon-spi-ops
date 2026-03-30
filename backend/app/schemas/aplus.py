@@ -131,6 +131,10 @@ class AplusPublishRequest(BaseModel):
     draft_id: str
 
 
+class AplusRecoverSourceRequest(BaseModel):
+    draft_id: str
+
+
 class AplusImproveRequest(BaseModel):
     draft_id: str
     category: SupportedAplusImprovementCategory

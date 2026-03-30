@@ -673,6 +673,20 @@ export async function improveAplusDraft(
   });
 }
 
+export async function recoverAplusSourceVariant(
+  token: string,
+  draftId: string,
+): Promise<AplusDraftResponse> {
+  return apiRequest<AplusDraftResponse>("/aplus/variants/recover-source", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ draft_id: draftId }),
+  });
+}
+
 export async function saveAplusDraft(
   token: string,
   payload: { draft_id: string; draft_payload: AplusDraftPayload },

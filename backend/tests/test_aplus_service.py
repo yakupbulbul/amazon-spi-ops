@@ -47,6 +47,23 @@ class FakeSession:
         return None
 
 
+class StubTranslationOpenAi:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def translate_aplus_draft(
+        self,
+        *,
+        draft_payload: AplusDraftPayload,
+        source_language: str,
+        target_language: str,
+    ) -> AplusDraftPayload:
+        self.calls.append((source_language, target_language))
+        payload = draft_payload.model_copy(deep=True)
+        payload.headline = f"Recovered {target_language} draft"
+        return payload
+
+
 class StubAmazonService:
     def __init__(self) -> None:
         self.calls: list[tuple[str, object]] = []
@@ -573,6 +590,100 @@ def test_mock_generation_is_publish_ready_under_new_readiness_rules() -> None:
 
     assert report.is_publish_ready is False
     assert any(issue.code == "unsupported_module_type" for issue in report.blocking_errors)
+
+
+def test_recover_source_variant_creates_original_sibling_for_translated_only_draft() -> None:
+    product_id = uuid4()
+    draft_id = uuid4()
+    product = SimpleNamespace(
+        id=product_id,
+        sku="DOG-SEAT-COVER",
+        asin="B0DOGTEST01",
+        title="Dog Seat Cover",
+        marketplace_id="A1PA6795UKMFR9",
+        aplus_drafts=[],
+    )
+    translated_payload = AplusDraftPayload.model_validate(
+        {
+            "headline": "Recovered translated draft",
+            "subheadline": "Keep the translated structure available for editing.",
+            "brand_story": "This translated variant is the only stored draft and needs a source sibling so editors can switch languages safely.",
+            "key_features": [
+                "Waterproof layer",
+                "Non-slip anchor points",
+                "Fast clean-up after travel",
+            ],
+            "modules": [
+                {
+                    "module_id": "hero-module-1",
+                    "module_type": "hero",
+                    "headline": "Travel without mess",
+                    "body": "Protect the rear bench while keeping setup and clean-up practical for everyday use.",
+                    "bullets": ["Waterproof barrier", "Quick install"],
+                    "image_brief": "Show the rear seat cover in realistic daily use.",
+                },
+                {
+                    "module_id": "feature-module-1",
+                    "module_type": "feature",
+                    "headline": "Grip that stays put",
+                    "body": "Explain how the anchors and backing reduce shifting during driving.",
+                    "bullets": ["Anchored corners", "Stable backing"],
+                    "image_brief": "Show a close-up of the anchor system.",
+                },
+                {
+                    "module_id": "faq-module-1",
+                    "module_type": "faq",
+                    "headline": "Built for routine trips",
+                    "body": "Use the FAQ module to reassure shoppers about cleaning and daily use expectations.",
+                    "bullets": [],
+                    "image_brief": "No image required.",
+                },
+            ],
+            "compliance_notes": [
+                "Avoid unsupported safety claims.",
+                "Keep usage guidance practical and clear.",
+            ],
+        }
+    )
+    translated_draft = SimpleNamespace(
+        id=draft_id,
+        product_id=product_id,
+        status="draft",
+        brand_tone="Practical and reassuring.",
+        positioning="Dog owners who travel weekly.",
+        variant_group_id="variant-group-1",
+        variant_role="translated",
+        source_language="de-DE",
+        target_language="en-GB",
+        auto_translate=True,
+        draft_payload=translated_payload.model_dump(mode="json"),
+        validated_payload=None,
+        created_by_id=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    product.aplus_drafts.append(translated_draft)
+
+    session = FakeSession()
+    session.registry[("Product", product_id)] = product
+    session.registry[("AplusDraft", draft_id)] = translated_draft
+    openai_service = StubTranslationOpenAi()
+    service = AplusService(
+        session,
+        StubAmazonService(),  # type: ignore[arg-type]
+        openai_service,  # type: ignore[arg-type]
+        MediaStorageService(root=Path("/tmp/aplus-test-recover"), url_prefix="/media"),
+    )
+
+    recovered = service.recover_source_variant(draft_id=draft_id)
+
+    assert recovered.variant_role == "original"
+    assert recovered.source_language == "de-DE"
+    assert recovered.target_language == "de-DE"
+    assert recovered.product_id == str(product_id)
+    assert openai_service.calls == [("en-GB", "de-DE")]
+    assert len(product.aplus_drafts) == 2
+
 
 
 def test_publish_to_amazon_maps_supported_subset_and_runs_real_stage_order() -> None:

@@ -40,6 +40,7 @@ import {
   getProducts,
   improveAplusDraft,
   publishAplusDraft,
+  recoverAplusSourceVariant,
   saveAplusDraft,
   uploadAplusAsset,
   type AplusAsset,
@@ -479,6 +480,7 @@ export function AplusStudioPage() {
   const [isApplyingImprovement, setIsApplyingImprovement] = useState(false);
   const [readinessFixIssueKey, setReadinessFixIssueKey] = useState<string | null>(null);
   const [switchingVariantId, setSwitchingVariantId] = useState<string | null>(null);
+  const [isRecoveringSourceVariant, setIsRecoveringSourceVariant] = useState(false);
   const [expandedModules, setExpandedModules] = useState<number[]>([0]);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [assetLibraryError, setAssetLibraryError] = useState<string | null>(null);
@@ -500,6 +502,9 @@ export function AplusStudioPage() {
   const generationAutoTranslate = selectedDraft?.auto_translate ?? autoTranslate;
   const availableVariantDrafts = getAvailableVariantDrafts(selectedDraft, drafts);
   const selectedDraftPayload = getEditablePayload(selectedDraft);
+  const canRecoverSourceVariant =
+    selectedDraft?.variant_role === "translated" &&
+    !availableVariantDrafts.some((draft) => draft.variant_role === "original");
   const hasUnsavedChanges =
     selectedDraft !== null &&
     editorDraft !== null &&
@@ -950,6 +955,42 @@ export function AplusStudioPage() {
   function rejectImprovementPreview() {
     setImprovementPreview(null);
     setStatusMessage("Improvement preview discarded. The working draft and score stayed unchanged.");
+  }
+
+  async function handleRecoverSourceVariant() {
+    if (!token || !selectedDraftId || !selectedDraft || selectedDraft.variant_role !== "translated") {
+      return;
+    }
+
+    const shouldSwitch = !hasUnsavedChanges || window.confirm(
+      "You have unsaved changes in the current translated variant. Create the source draft and switch to it, discarding unsaved edits?",
+    );
+    if (!shouldSwitch) {
+      return;
+    }
+
+    setIsRecoveringSourceVariant(true);
+    setError(null);
+    setStatusMessage(null);
+
+    try {
+      const sourceDraft = await recoverAplusSourceVariant(token, selectedDraftId);
+      const draftsResponse = await getAplusDrafts(token);
+      setDrafts(draftsResponse.items);
+      const nextDraft = draftsResponse.items.find((item) => item.id === sourceDraft.id) ?? sourceDraft;
+      selectDraft(nextDraft);
+      setStatusMessage(
+        `Source draft restored in ${formatLanguageLabel(nextDraft.source_language)}. You can now switch and edit both language variants.`,
+      );
+    } catch (recoverError) {
+      setError(
+        recoverError instanceof Error
+          ? recoverError.message
+          : "Unable to recover the source language draft.",
+      );
+    } finally {
+      setIsRecoveringSourceVariant(false);
+    }
   }
 
   async function handleVariantSwitch(nextDraft: AplusDraftResponse) {
@@ -1619,6 +1660,17 @@ export function AplusStudioPage() {
                       targetLanguage={generationTargetLanguage}
                       autoTranslate={generationAutoTranslate}
                       formatTimestamp={formatTimestamp}
+                      availableVariants={availableVariantDrafts}
+                      activeDraftId={selectedDraftId}
+                      switchingVariantId={switchingVariantId}
+                      onSwitchVariant={(draft) => {
+                        void handleVariantSwitch(draft);
+                      }}
+                      canRecoverSourceVariant={canRecoverSourceVariant}
+                      isRecoveringSourceVariant={isRecoveringSourceVariant}
+                      onRecoverSourceVariant={() => {
+                        void handleRecoverSourceVariant();
+                      }}
                     />
                   </div>
 
