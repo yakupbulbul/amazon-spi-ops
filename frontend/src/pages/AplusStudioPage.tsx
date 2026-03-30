@@ -161,6 +161,25 @@ type ReadinessFixPlan = {
   run: (payload: AplusDraftPayload) => AplusDraftPayload;
 };
 
+function issueMessageIncludes(issue: AplusReadinessIssue, fragment: string): boolean {
+  return issue.message.toLowerCase().includes(fragment.toLowerCase());
+}
+
+function isMissingPublishImageIssue(issue: AplusReadinessIssue): boolean {
+  return (
+    [
+      "missing_required_publish_image",
+      "missing_generated_image",
+      "missing_uploaded_image",
+      "missing_existing_asset",
+    ].includes(issue.code) ||
+    issueMessageIncludes(issue, "require an image") ||
+    issueMessageIncludes(issue, "no generated image is available") ||
+    issueMessageIncludes(issue, "no uploaded image has been attached") ||
+    issueMessageIncludes(issue, "no asset has been chosen")
+  );
+}
+
 function parseIssueModuleIndex(issue: AplusReadinessIssue): number | null {
   const match = issue.field_label?.match(/Module\s+(\d+)/i);
   if (!match) {
@@ -204,7 +223,10 @@ function buildReadinessFixPlan(
     return null;
   }
 
-  if (issue.code === "unsupported_module_image") {
+  if (
+    issue.code === "unsupported_module_image" ||
+    issueMessageIncludes(issue, "does not support publishable images")
+  ) {
     return {
       label: "Remove image",
       description:
@@ -221,7 +243,12 @@ function buildReadinessFixPlan(
     };
   }
 
-  if (issue.code === "unsupported_overlay" || issue.code === "overlay_without_image") {
+  if (
+    issue.code === "unsupported_overlay" ||
+    issue.code === "overlay_without_image" ||
+    issueMessageIncludes(issue, "overlay text is only publishable") ||
+    issueMessageIncludes(issue, "overlay text requires")
+  ) {
     return {
       label: "Remove overlay text",
       description:
@@ -238,7 +265,12 @@ function buildReadinessFixPlan(
     };
   }
 
-  if (issue.code === "unsupported_module_type" && targetModule.module_type === "comparison") {
+  if (
+    (issue.code === "unsupported_module_type" ||
+      issueMessageIncludes(issue, "editorial-only") ||
+      issueMessageIncludes(issue, "comparison modules are editorial-only")) &&
+    targetModule.module_type === "comparison"
+  ) {
     return {
       label: "Convert to FAQ",
       description:
@@ -800,19 +832,19 @@ export function AplusStudioPage() {
     }
 
     const moduleIndex = parseIssueModuleIndex(issue);
-    if (
-      moduleIndex !== null &&
-      [
-        "missing_required_publish_image",
-        "missing_generated_image",
-        "missing_uploaded_image",
-        "missing_existing_asset",
-      ].includes(issue.code)
-    ) {
+    if (moduleIndex !== null && isMissingPublishImageIssue(issue)) {
       return {
         label: "Open image controls",
         description:
           "Open this module in the editor so you can upload, select, or generate the required publishable image.",
+      };
+    }
+
+    if (moduleIndex !== null) {
+      return {
+        label: "Review module",
+        description:
+          "Open this module in the editor and jump directly to the blocking publish issue.",
       };
     }
 
@@ -824,18 +856,16 @@ export function AplusStudioPage() {
     const moduleIndex = parseIssueModuleIndex(issue);
     const plan = buildReadinessFixPlan(issue, editorDraft);
 
-    if (
-      !plan &&
-      moduleIndex !== null &&
-      [
-        "missing_required_publish_image",
-        "missing_generated_image",
-        "missing_uploaded_image",
-        "missing_existing_asset",
-      ].includes(issue.code)
-    ) {
+    if (!plan && moduleIndex !== null && isMissingPublishImageIssue(issue)) {
       setExpandedModules((current) => (current.includes(moduleIndex) ? current : [...current, moduleIndex]));
       setStatusMessage(`Opened Module ${moduleIndex + 1} so you can resolve its publish image requirement.`);
+      setError(null);
+      return;
+    }
+
+    if (!plan && moduleIndex !== null) {
+      setExpandedModules((current) => (current.includes(moduleIndex) ? current : [...current, moduleIndex]));
+      setStatusMessage(`Opened Module ${moduleIndex + 1} for blocking publish review.`);
       setError(null);
       return;
     }
