@@ -44,7 +44,7 @@ export function DraftMetadataBar({
 }: DraftMetadataBarProps) {
   return (
     <div className="rounded-[1.5rem] bg-white/[0.03] px-4 py-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-slate-400">
             <Package2 className="h-4 w-4" />
@@ -58,7 +58,7 @@ export function DraftMetadataBar({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 xl:justify-end">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-200">
             <Globe className="h-3.5 w-3.5 text-slate-400" />
             {draft?.marketplace_id ?? product?.marketplace_id ?? "Marketplace pending"}

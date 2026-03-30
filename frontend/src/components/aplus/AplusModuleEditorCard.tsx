@@ -91,7 +91,7 @@ export function AplusModuleEditorCard({
 
   return (
     <article className="rounded-[1.5rem] bg-white/[0.03] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs uppercase tracking-[0.22em] text-slate-400">
@@ -119,7 +119,7 @@ export function AplusModuleEditorCard({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           <button
             type="button"
             onClick={onToggle}
@@ -157,7 +157,7 @@ export function AplusModuleEditorCard({
               : "This module stays in the Studio for editorial planning only. It is not included in the real Amazon publish request yet."}
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
+          <div className="grid gap-4 xl:grid-cols-[180px_minmax(0,1fr)]">
             <label className="block space-y-2">
               <span className="text-sm text-slate-300">Module type</span>
               <select
@@ -214,10 +214,10 @@ export function AplusModuleEditorCard({
             />
           ) : null}
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 2xl:grid-cols-2">
             {module.module_type === "comparison" ? (
               <div className="space-y-3 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                   <div>
                     <p className="text-sm font-medium text-white">Comparison rows</p>
                     <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -254,7 +254,7 @@ export function AplusModuleEditorCard({
                             className="w-full rounded-[0.9rem] border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none"
                           />
                         </label>
-                        <div className="grid gap-3 md:grid-cols-2">
+                        <div className="grid gap-3 xl:grid-cols-2">
                           <label className="block space-y-2">
                             <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
                               This product
