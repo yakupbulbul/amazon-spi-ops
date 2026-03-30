@@ -515,6 +515,12 @@ export function AplusStudioPage() {
     editorDraft?.modules.filter((module) => !moduleIsRealPublishSupported(module.module_type)).length ??
     0;
   const optimizationScore = selectedDraft?.optimization_report.overall_score ?? null;
+  const activePreviewLanguage = selectedDraft
+    ? ((selectedDraft.variant_role === "translated"
+        ? selectedDraft.target_language
+        : selectedDraft.source_language) as AplusLanguage)
+    : ((generationAutoTranslate ? generationTargetLanguage : generationSourceLanguage) as AplusLanguage);
+  const activeVariantLabel = selectedDraft ? formatVariantLabel(selectedDraft) : `Current (${formatLanguageLabel(activePreviewLanguage)})`;
   const coreMessageSuggestions = getOptimizationSuggestions(selectedDraft, [
     "hero",
     "headline",
@@ -2093,8 +2099,10 @@ export function AplusStudioPage() {
       {isPreviewOpen && editorDraft ? (
         <AplusPreviewModal
           draft={editorDraft}
-          language={generationTargetLanguage}
+          language={activePreviewLanguage}
           assets={assets}
+          variantLabel={activeVariantLabel}
+          productTitle={selectedProduct?.title ?? null}
           onClose={() => setIsPreviewOpen(false)}
           returnFocusTo={previewTriggerRef.current}
         />
