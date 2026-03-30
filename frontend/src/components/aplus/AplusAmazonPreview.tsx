@@ -1,6 +1,5 @@
 import {
   Check,
-  Columns3,
   ImageIcon,
   ImageOff,
   Info,
@@ -18,6 +17,8 @@ import type {
 import { formatLanguageLabel } from "./languages";
 import {
   moduleHasUnsupportedPublishImageConfig,
+  moduleIsEditorialOnly,
+  moduleIsRealPublishSupported,
   moduleSupportsPublishImage,
   moduleSupportsPublishOverlay,
   resolveModulePublishableImageUrl,
@@ -37,8 +38,14 @@ const twoLineClampStyle = {
 };
 
 export function AplusAmazonPreview({ draft, language, assets = [] }: AplusAmazonPreviewProps) {
-  const heroModule = draft.modules.find((module) => module.module_type === "hero") ?? draft.modules[0];
+  const publishableModules = draft.modules.filter((module) => moduleIsRealPublishSupported(module.module_type));
+  const editorialModules = draft.modules.filter((module) => moduleIsEditorialOnly(module.module_type));
+  const heroModule =
+    publishableModules.find((module) => module.module_type === "hero") ??
+    publishableModules[0] ??
+    draft.modules[0];
   const heroImageUrl = resolveModulePublishableImageUrl(heroModule, assets);
+  const visibleModules = publishableModules.filter((module) => module.module_id !== heroModule?.module_id);
 
   return (
     <div className="rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.12),_transparent_32%),linear-gradient(180deg,rgba(15,23,42,0.9),rgba(2,6,23,0.95))] p-3 sm:p-4">
@@ -65,9 +72,19 @@ export function AplusAmazonPreview({ draft, language, assets = [] }: AplusAmazon
             <div className="h-full overflow-y-auto overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
               <div className="mx-auto max-w-[660px] space-y-3">
                 <section className="rounded-[1.35rem] bg-[linear-gradient(135deg,#fff8e6,#ffffff_60%,#f8fafc)] p-4 shadow-sm shadow-slate-300/40">
-                  <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
-                    Hero
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
+                      Hero
+                    </p>
+                    <span className="rounded-full bg-slate-950 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white">
+                      Live subset
+                    </span>
+                    {editorialModules.length > 0 ? (
+                      <span className="rounded-full border border-amber-300/30 bg-amber-100 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-amber-700">
+                        {editorialModules.length} editorial module{editorialModules.length === 1 ? "" : "s"} omitted
+                      </span>
+                    ) : null}
+                  </div>
                   <h4
                     className="mt-2 text-xl font-semibold leading-tight text-slate-950 sm:text-[1.45rem]"
                     style={twoLineClampStyle}
@@ -124,15 +141,39 @@ export function AplusAmazonPreview({ draft, language, assets = [] }: AplusAmazon
                   ))}
                 </section>
 
-                <section className="space-y-3">
-                  {draft.modules.map((module, index) => (
-                    <ModulePreviewCard
-                      key={`${module.module_type}-${index}`}
-                      module={module}
-                      assets={assets}
-                    />
-                  ))}
-                </section>
+                {visibleModules.length > 0 ? (
+                  <section className="space-y-3">
+                    {visibleModules.map((module) => (
+                      <ModulePreviewCard key={module.module_id} module={module} assets={assets} />
+                    ))}
+                  </section>
+                ) : null}
+
+                {editorialModules.length > 0 ? (
+                  <section className="rounded-[1rem] border border-amber-300/20 bg-amber-50 p-4 shadow-sm shadow-amber-200/40">
+                    <div className="flex items-center gap-2 text-amber-700">
+                      <Info className="h-3.5 w-3.5" />
+                      <p className="text-[10px] font-medium uppercase tracking-[0.22em]">
+                        Editorial-only modules
+                      </p>
+                    </div>
+                    <p className="mt-2 text-[13px] leading-6 text-amber-800">
+                      {editorialModules.length === 1
+                        ? "One draft module is still editorial-only and stays outside the live Amazon request."
+                        : `${editorialModules.length} draft modules are still editorial-only and stay outside the live Amazon request.`}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {editorialModules.map((module) => (
+                        <span
+                          key={module.module_id}
+                          className="rounded-full border border-amber-300/30 bg-white px-3 py-1.5 text-[11px] font-medium text-amber-800"
+                        >
+                          {module.module_type}: {module.headline}
+                        </span>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
 
                 <section className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
                   <div className="flex items-center gap-2 text-slate-500">
@@ -171,52 +212,6 @@ function ModulePreviewCard({
   const imageUrl = resolveModulePublishableImageUrl(module, assets);
   const supportsImage = moduleSupportsPublishImage(module.module_type);
   const unsupportedImageConfig = moduleHasUnsupportedPublishImageConfig(module);
-
-  if (module.module_type === "comparison") {
-    const rows = module.bullets.map(parseComparisonRow);
-
-    return (
-      <article className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
-        <div className="flex items-center gap-2 text-slate-500">
-          <Columns3 className="h-3.5 w-3.5" />
-          <p className="text-[10px] font-medium uppercase tracking-[0.22em]">Comparison module</p>
-        </div>
-        <h5 className="mt-2 text-lg font-semibold leading-snug text-slate-950">{module.headline}</h5>
-        <p className="mt-2 text-[13px] leading-5 text-slate-600">{module.body}</p>
-        <div className="mt-3 rounded-[0.95rem] border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] leading-5 text-slate-600">
-          {unsupportedImageConfig ? (
-            <span className="inline-flex items-start gap-2">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-              Comparison modules are editorial-only in the current real Amazon publish subset and are not sent in the live request yet.
-            </span>
-          ) : (
-            "Comparison modules remain editorial-only until the exact Amazon comparison contract is implemented."
-          )}
-        </div>
-        <div className="mt-3 overflow-hidden rounded-[0.9rem] border border-slate-200">
-          <div className="grid grid-cols-[1fr_0.95fr_0.95fr] bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            <div className="px-2.5 py-2">Criteria</div>
-            <div className="border-l border-slate-200 px-2.5 py-2">This product</div>
-            <div className="border-l border-slate-200 px-2.5 py-2">Generic</div>
-          </div>
-          {rows.map((row, index) => (
-            <div
-              key={`${row.criterion}-${row.thisProduct}-${row.genericAlternative}-${index}`}
-              className="grid grid-cols-[1fr_0.95fr_0.95fr] border-t border-slate-200 text-[12px] leading-5 text-slate-700"
-            >
-              <div className="px-2.5 py-2">{row.criterion}</div>
-              <div className="border-l border-slate-200 px-2.5 py-2 text-emerald-700">
-                {row.thisProduct || "Advantage"}
-              </div>
-              <div className="border-l border-slate-200 px-2.5 py-2 text-slate-500">
-                {row.genericAlternative || "Baseline"}
-              </div>
-            </div>
-          ))}
-        </div>
-      </article>
-    );
-  }
 
   return (
     <article className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
@@ -310,20 +305,4 @@ function extractOverlayText(imageBrief?: string): string | null {
 
   const match = imageBrief.match(/(?:Overlay-Text|overlay text):\s*['"]([^'"]+)['"]/i);
   return match?.[1] ?? null;
-}
-
-function parseComparisonRow(value: string): {
-  criterion: string;
-  thisProduct: string;
-  genericAlternative: string;
-} {
-  const [criterion = "", thisProduct = "", genericAlternative = ""] = value
-    .split("|")
-    .map((item) => item.trim());
-
-  return {
-    criterion,
-    thisProduct,
-    genericAlternative,
-  };
 }
