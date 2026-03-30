@@ -231,6 +231,46 @@ class AplusService:
             ),
         )
 
+    def recover_source_variant(self, *, draft_id: UUID) -> AplusDraftResponse:
+        draft = self._get_draft(draft_id)
+        product = self._get_product(draft.product_id)
+        if draft.variant_role == "original":
+            return self._serialize_draft(draft=draft, product=product)
+
+        existing_original = self._find_original_variant(product=product, variant_group_id=draft.variant_group_id)
+        if existing_original is not None:
+            return self._serialize_draft(draft=existing_original, product=product)
+
+        translated_payload = AplusDraftPayload.model_validate(draft.draft_payload)
+        recovered_payload = self.openai_service.translate_aplus_draft(
+            draft_payload=translated_payload,
+            source_language=draft.target_language,
+            target_language=draft.source_language,
+        )
+
+        from app.models.entities import AplusDraft
+
+        source_draft = AplusDraft(
+            product_id=product.id,
+            status=DraftStatus.DRAFT.value,
+            brand_tone=draft.brand_tone,
+            positioning=draft.positioning,
+            variant_group_id=draft.variant_group_id,
+            variant_role="original",
+            source_language=draft.source_language,
+            target_language=draft.source_language,
+            auto_translate=False,
+            draft_payload=recovered_payload.model_dump(mode="json"),
+            validated_payload=None,
+            created_by_id=draft.created_by_id,
+        )
+        self.db_session.add(source_draft)
+        if hasattr(product, "aplus_drafts") and isinstance(product.aplus_drafts, list):
+            product.aplus_drafts.append(source_draft)
+        self.db_session.commit()
+        self.db_session.refresh(source_draft)
+        return self._serialize_draft(draft=source_draft, product=product)
+
     def publish_draft(self, *, draft_id: UUID) -> AplusPublishResponse:
         draft = self._get_draft(draft_id)
         product = self._get_product(draft.product_id)
@@ -787,6 +827,26 @@ class AplusService:
         offset_x = max((width_pixels - crop_width) // 2, 0)
         offset_y = max((height_pixels - crop_height) // 2, 0)
         return crop_width, crop_height, offset_x, offset_y
+
+    def _find_original_variant(self, *, product: Product, variant_group_id: str) -> AplusDraft | None:
+        product_drafts = getattr(product, "aplus_drafts", None)
+        if isinstance(product_drafts, list):
+            for draft in product_drafts:
+                if draft.variant_group_id == variant_group_id and draft.variant_role == "original":
+                    return draft
+
+        if not hasattr(self.db_session, "execute"):
+            return None
+
+        from app.models.entities import AplusDraft
+
+        return self.db_session.execute(
+            select(AplusDraft)
+            .where(AplusDraft.product_id == product.id)
+            .where(AplusDraft.variant_group_id == variant_group_id)
+            .where(AplusDraft.variant_role == "original")
+            .order_by(AplusDraft.updated_at.desc())
+        ).scalars().first()
 
     def _get_draft(self, draft_id: UUID) -> AplusDraft:
         from app.models.entities import AplusDraft

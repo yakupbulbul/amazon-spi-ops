@@ -23,6 +23,7 @@ from app.schemas.aplus import (
     AplusPublishJobResponse,
     AplusSaveRequest,
     AplusPublishRequest,
+    AplusRecoverSourceRequest,
     AplusPublishResponse,
     AplusValidateRequest,
 )
@@ -163,6 +164,25 @@ def validate_aplus_draft(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/variants/recover-source", response_model=AplusDraftResponse)
+def recover_aplus_source_variant(
+    payload: AplusRecoverSourceRequest,
+    _: User = Depends(get_current_user),
+    aplus_service: AplusService = Depends(get_aplus_service),
+) -> AplusDraftResponse:
+    try:
+        return aplus_service.recover_source_variant(
+            draft_id=UUID(payload.draft_id),
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "A+ draft not found.":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @router.post("/save", response_model=AplusDraftResponse)
