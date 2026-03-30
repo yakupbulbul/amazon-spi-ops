@@ -146,7 +146,7 @@ export function AplusModuleImageSection({
         </div>
       )}
 
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
         {imageModes.map((mode) => {
           const Icon = mode.icon;
           const isActive = module.image_mode === mode.value;
@@ -172,7 +172,7 @@ export function AplusModuleImageSection({
         })}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(220px,0.9fr)]">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.1fr)_minmax(220px,0.9fr)]">
         <div className="space-y-4">
           {module.image_mode === "uploaded" ? (
             <div className="space-y-4">
@@ -239,7 +239,7 @@ export function AplusModuleImageSection({
                   No reusable assets yet. Upload an image first or generate one later.
                 </div>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {assets.map((asset) => {
                     const isSelected = module.selected_asset_id === asset.id;
                     return (
@@ -312,7 +312,7 @@ export function AplusModuleImageSection({
                   type="button"
                   onClick={onGenerate}
                   disabled={!canGenerate || module.image_status === "queued" || module.image_status === "generating"}
-                  className="inline-flex items-center gap-2 rounded-full bg-amber-300 px-3 py-2 text-xs font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full bg-amber-300 px-3 py-2 text-xs font-medium text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {module.image_status === "queued" || module.image_status === "generating" ? (
                     <LoaderCircle className="h-4 w-4 animate-spin" />

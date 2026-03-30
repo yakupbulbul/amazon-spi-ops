@@ -94,7 +94,7 @@ export function AplusPublishLifecycleCard({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
         <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/60 px-4 py-3">
           <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Reference key</p>
           <p className="mt-2 break-all text-sm text-slate-200">
@@ -117,7 +117,7 @@ export function AplusPublishLifecycleCard({
         </div>
       </div>
 
-      <ol className="mt-6 grid gap-3 lg:grid-cols-6">
+      <ol className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {lifecycleSteps.map((step, index) => {
           const isComplete = index < currentStepIndex || (publishJob.status === "approved" && index <= currentStepIndex);
           const isCurrent = !isRejected && index === currentStepIndex;

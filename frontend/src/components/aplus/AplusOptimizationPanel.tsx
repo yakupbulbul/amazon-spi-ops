@@ -54,7 +54,7 @@ export function AplusOptimizationPanel({
         <AplusScoreBadge score={optimization.overall_score} />
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         <MetricCard label="Structure" value={optimization.structure_score} />
         <MetricCard label="Clarity" value={optimization.clarity_score} />
         <MetricCard label="Differentiation" value={optimization.differentiation_score} />
@@ -67,7 +67,7 @@ export function AplusOptimizationPanel({
         />
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
+      <div className="mt-5 grid gap-3 xl:grid-cols-2">
         {improvementCategories.map((category) => (
           <ImprovementActionCard
             key={category.key}
@@ -81,7 +81,7 @@ export function AplusOptimizationPanel({
         ))}
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      <div className="mt-5 grid gap-5 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <div className="space-y-4">
           <SuggestionList
             title="Critical issues"

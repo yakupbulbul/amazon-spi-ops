@@ -1322,7 +1322,7 @@ export function AplusStudioPage() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_320px]">
+      <section className="grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_320px]">
         <div className="rounded-[2rem] bg-[linear-gradient(135deg,_rgba(14,165,233,0.18),_rgba(15,23,42,0.94)_38%,_rgba(2,6,23,1)_100%)] p-6 shadow-2xl shadow-black/30 sm:p-8">
           <p className="text-xs uppercase tracking-[0.32em] text-sky-100/70">A+ Content Studio</p>
           <h2 className="mt-4 max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
@@ -1345,7 +1345,7 @@ export function AplusStudioPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-1">
           <article className="rounded-[1.75rem] bg-white/[0.04] p-5">
             <p className="text-sm text-slate-400">Drafts</p>
             <p className="mt-4 text-4xl font-semibold text-white">{drafts.length}</p>
@@ -1379,7 +1379,7 @@ export function AplusStudioPage() {
         </section>
       ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-[400px_minmax(0,1fr)] xl:items-start">
+      <section className="grid gap-6 2xl:grid-cols-[380px_minmax(0,1fr)] 2xl:items-start">
         <div className="space-y-6">
           <article className="rounded-[1.75rem] bg-slate-950/50 p-5 shadow-lg shadow-black/10 sm:p-6">
             <div className="flex items-center gap-3">
@@ -1399,7 +1399,7 @@ export function AplusStudioPage() {
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Product</p>
                   <p className="text-sm text-slate-400">Choose the listing that will anchor the A+ story.</p>
                 </div>
-              <ProductCombobox
+                <ProductCombobox
                 products={products}
                 selectedProduct={selectedProduct}
                 onSelect={(product) => handleProductChange(product.id)}
@@ -1414,7 +1414,7 @@ export function AplusStudioPage() {
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Language</p>
                   <p className="text-sm text-slate-400">Define the language used for base generation.</p>
                 </div>
-              <LanguageSelector
+                <LanguageSelector
                 label="Source language"
                 value={sourceLanguage}
                 onChange={handleSourceLanguageChange}
@@ -1430,7 +1430,7 @@ export function AplusStudioPage() {
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Translation</p>
                   <p className="text-sm text-slate-400">Translate shopper-facing copy without changing the schema.</p>
                 </div>
-              <TranslationToggle
+                <TranslationToggle
                 autoTranslate={autoTranslate}
                 sourceLanguage={sourceLanguage}
                 targetLanguage={targetLanguage}
@@ -1456,7 +1456,7 @@ export function AplusStudioPage() {
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Brand tone</p>
                   <p className="text-sm text-slate-400">Guide the voice, audience, and positioning.</p>
                 </div>
-              <label className="block space-y-2">
+                <label className="block space-y-2">
                 <span className="text-sm text-slate-300">Brand tone</span>
                 <input
                   type="text"
@@ -1467,8 +1467,8 @@ export function AplusStudioPage() {
                 />
               </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm text-slate-300">Positioning and customer context</span>
+                  <label className="block space-y-2">
+                  <span className="text-sm text-slate-300">Positioning and customer context</span>
                 <textarea
                   value={positioning}
                   onChange={(event) => setPositioning(event.target.value)}
@@ -1636,7 +1636,7 @@ export function AplusStudioPage() {
                 ) : null}
               </div>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <button
                   type="button"
                   ref={previewTriggerRef}
@@ -1740,7 +1740,7 @@ export function AplusStudioPage() {
                       {improvementPreview.summary}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                     <button
                       type="button"
                       onClick={rejectImprovementPreview}
@@ -1759,7 +1759,7 @@ export function AplusStudioPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                <div className="mt-5 grid gap-5 2xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
                   <div className="space-y-3 rounded-[1.25rem] border border-white/10 bg-slate-950/35 p-4">
                     <p className="text-xs uppercase tracking-[0.22em] text-emerald-100/70">
                       Issues addressed
@@ -1800,7 +1800,7 @@ export function AplusStudioPage() {
                             className="rounded-[1rem] border border-white/10 bg-white/[0.04] p-4"
                           >
                             <p className="text-sm font-medium text-white">{change.label}</p>
-                            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                            <div className="mt-3 grid gap-3 xl:grid-cols-2">
                               <div className="rounded-[0.9rem] border border-white/10 bg-slate-950/60 px-3 py-3">
                                 <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Before</p>
                                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">
@@ -1832,7 +1832,7 @@ export function AplusStudioPage() {
                     ? `Generate an A+ draft for ${selectedProduct.title} to unlock the full editor. The AI will create the headline, subheadline, brand story, key features, compliance notes, and the first set of content modules automatically.`
                     : "Choose a product and generate a draft to unlock the full editor. The AI will create the headline, subheadline, brand story, key features, compliance notes, and the first set of content modules automatically."}
                 </p>
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-4">
                     <p className="text-xs uppercase tracking-[0.16em] text-slate-500">What AI generates</p>
                     <p className="mt-2 text-sm leading-6 text-slate-300">Headline, subheadline, brand story, key features, compliance notes, and a structured module set.</p>
@@ -1884,8 +1884,8 @@ export function AplusStudioPage() {
 
                   <AplusSectionWarnings items={coreMessageSuggestions} />
 
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <label className="block space-y-2">
+                  <div className="grid gap-4 xl:grid-cols-2">
+                      <label className="block space-y-2">
                       <span className="text-sm text-slate-300">Headline</span>
                       <p className="text-xs text-slate-500">Short, primary value proposition.</p>
                       <input
@@ -1905,7 +1905,7 @@ export function AplusStudioPage() {
                       />
                     </label>
 
-                    <label className="block space-y-2">
+                      <label className="block space-y-2">
                       <span className="text-sm text-slate-300">Subheadline</span>
                       <p className="text-xs text-slate-500">Support the main promise with one clear clarifier.</p>
                       <input
@@ -1937,7 +1937,7 @@ export function AplusStudioPage() {
 
                   <AplusSectionWarnings items={brandStorySuggestions} />
 
-                  <label className="block space-y-2">
+                    <label className="block space-y-2">
                     <span className="text-sm text-slate-300">Brand story</span>
                     <textarea
                       value={editorDraft.brand_story}
@@ -1957,10 +1957,10 @@ export function AplusStudioPage() {
                   </label>
                 </div>
 
-                <div className="grid gap-5 xl:grid-cols-2">
+                <div className="grid gap-5 2xl:grid-cols-2">
                   <div className="space-y-3 rounded-[1.5rem] bg-white/[0.03] p-4">
                     <AplusSectionWarnings items={featureSuggestions} />
-                    <label className="block space-y-2">
+                      <label className="block space-y-2">
                       <span className="text-sm font-medium text-white">Key features</span>
                       <p className="text-xs leading-5 text-slate-500">
                         One benefit-led point per line. These will be visible to editors and reused across modules.

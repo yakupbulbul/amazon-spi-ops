@@ -79,7 +79,7 @@ export function AplusReadinessPanel({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <SummaryPill
           tone={readiness.is_publish_ready ? "success" : "danger"}
           label="Blocking issues"
@@ -97,7 +97,7 @@ export function AplusReadinessPanel({
         />
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+      <div className="mt-5 grid gap-5 2xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
         <div className="space-y-4">
           <IssueList
             title="Blocking issues"
