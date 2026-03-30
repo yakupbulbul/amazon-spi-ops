@@ -166,10 +166,12 @@ class InventoryService:
                     source="inventory_sync",
                     event_status=alert.severity,
                     event_payload={
+                        "marketplace_id": product.marketplace_id,
                         "sku": product.sku,
                         "asin": product.asin,
                         "available_quantity": available_quantity,
                         "threshold": product.low_stock_threshold,
+                        "stock_health": snapshot.alert_status,
                         "message": alert.message,
                     },
                     notification_type="low_stock_threshold_reached",

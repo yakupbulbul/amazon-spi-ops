@@ -319,6 +319,7 @@ class AplusService:
                     "asin": product.asin,
                     "draft_id": str(draft.id),
                     "marketplace_id": product.marketplace_id,
+                    "publish_status": publish_job.status,
                     "content_reference_key": publish_job.external_submission_id,
                 },
                 notification_type="aplus_publish_success",
@@ -352,6 +353,8 @@ class AplusService:
                     "sku": product.sku,
                     "asin": product.asin,
                     "draft_id": str(draft.id),
+                    "marketplace_id": product.marketplace_id,
+                    "publish_status": "failed",
                     "error": str(exc),
                 },
                 notification_type="aplus_publish_failure",
@@ -1031,6 +1034,8 @@ class AplusService:
         if not publish_job.external_submission_id:
             return
         product = self._get_product(draft.product_id)
+        previous_status = publish_job.status
+        checked_at = self._now()
         try:
             content_status = self.amazon_service.get_aplus_content_document(
                 marketplace_id=product.marketplace_id,
@@ -1046,7 +1051,7 @@ class AplusService:
         response_payload["warnings"] = content_status.get("warnings") or []
         response_payload["errors"] = content_status.get("errors") or []
         response_payload["statusRefresh"] = {
-            "checkedAt": self._now().isoformat(),
+            "checkedAt": checked_at.isoformat(),
         }
         publish_job.response_payload = response_payload
 
@@ -1054,12 +1059,12 @@ class AplusService:
         amazon_status = str(content_metadata.get("status") or "").upper()
         if amazon_status == "APPROVED":
             publish_job.status = "approved"
-            publish_job.completed_at = self._now()
+            publish_job.completed_at = checked_at
             draft.status = DraftStatus.PUBLISHED.value
             publish_job.error_message = None
         elif amazon_status == "REJECTED":
             publish_job.status = "rejected"
-            publish_job.completed_at = self._now()
+            publish_job.completed_at = checked_at
             draft.status = DraftStatus.FAILED.value
             reasons = self._extract_publish_job_messages(response_payload, key="errors")
             publish_job.error_message = "; ".join(reasons[:3]) if reasons else "Amazon rejected the A+ content document."
@@ -1069,6 +1074,32 @@ class AplusService:
         elif amazon_status == "DRAFT":
             publish_job.status = "submitted"
             draft.status = DraftStatus.READY_TO_PUBLISH.value
+
+        if publish_job.status != previous_status and publish_job.status in {"approved", "rejected"}:
+            notification_service = NotificationService(self.db_session)
+            notification = notification_service.queue_event_notification(
+                event_type="aplus_publish",
+                source="amazon_review_status",
+                event_status=publish_job.status,
+                event_payload={
+                    "sku": product.sku,
+                    "asin": product.asin,
+                    "draft_id": str(draft.id),
+                    "marketplace_id": product.marketplace_id,
+                    "publish_status": publish_job.status,
+                    "content_reference_key": publish_job.external_submission_id,
+                    "rejection_reason": publish_job.error_message,
+                },
+                notification_type="aplus_approved" if publish_job.status == "approved" else "aplus_rejected",
+                message_preview=(
+                    f"A+ content approved for {product.sku}."
+                    if publish_job.status == "approved"
+                    else f"A+ content rejected for {product.sku}."
+                ),
+                occurred_at=checked_at,
+            )
+            self.db_session.commit()
+            notification_service.dispatch_notification(notification.id)
 
     def _set_publish_job_state(
         self,

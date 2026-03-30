@@ -212,6 +212,7 @@ class RejectedAmazonService(StubAmazonService):
 def build_publish_product() -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(),
+        sku="DF-LPER-Z2CC",
         asin="B0PUBLISHTEST",
         title="Publishable Product",
         marketplace_id="A1PA6795UKMFR9",
@@ -1154,10 +1155,11 @@ def test_prepare_amazon_asset_reuses_cached_upload_reference_without_reupload() 
     assert [call[0] for call in amazon_service.calls] == []
 
 
-def test_refresh_publish_job_status_marks_approved_jobs_and_serializes_warnings() -> None:
+def test_refresh_publish_job_status_marks_approved_jobs_and_serializes_warnings(monkeypatch) -> None:
     product = build_publish_product()
     draft_id = uuid4()
     session = FakeSession()
+    dispatched: list[str] = []
     session.registry[("Product", product.id)] = product
     service = AplusService(
         session,
@@ -1165,7 +1167,11 @@ def test_refresh_publish_job_status_marks_approved_jobs_and_serializes_warnings(
         None,  # type: ignore[arg-type]
         MediaStorageService(root=Path("/tmp/aplus-status"), url_prefix="/media"),
     )
-    draft = SimpleNamespace(product_id=product.id, status="ready_to_publish")
+    monkeypatch.setattr(
+        "app.services.notification_service.NotificationService.dispatch_notification",
+        staticmethod(lambda notification_id: dispatched.append(str(notification_id))),
+    )
+    draft = SimpleNamespace(id=uuid4(), product_id=product.id, status="ready_to_publish")
     publish_job = SimpleNamespace(
         id=uuid4(),
         draft_id=draft_id,
@@ -1184,11 +1190,15 @@ def test_refresh_publish_job_status_marks_approved_jobs_and_serializes_warnings(
     assert publish_job.status == "approved"
     assert draft.status == "published"
     assert serialized.warnings == ["Awaiting moderation replication"]
+    assert dispatched
+    notification = next(item for item in session.added if type(item).__name__ == "SlackNotification")
+    assert notification.notification_type == "aplus_approved"
 
 
-def test_refresh_publish_job_status_marks_rejected_jobs_and_keeps_amazon_reasons() -> None:
+def test_refresh_publish_job_status_marks_rejected_jobs_and_keeps_amazon_reasons(monkeypatch) -> None:
     product = build_publish_product()
     session = FakeSession()
+    dispatched: list[str] = []
     session.registry[("Product", product.id)] = product
     service = AplusService(
         session,
@@ -1196,7 +1206,11 @@ def test_refresh_publish_job_status_marks_rejected_jobs_and_keeps_amazon_reasons
         None,  # type: ignore[arg-type]
         MediaStorageService(root=Path("/tmp/aplus-status-rejected"), url_prefix="/media"),
     )
-    draft = SimpleNamespace(product_id=product.id, status="ready_to_publish")
+    monkeypatch.setattr(
+        "app.services.notification_service.NotificationService.dispatch_notification",
+        staticmethod(lambda notification_id: dispatched.append(str(notification_id))),
+    )
+    draft = SimpleNamespace(id=uuid4(), product_id=product.id, status="ready_to_publish")
     publish_job = SimpleNamespace(
         id=uuid4(),
         draft_id=uuid4(),
@@ -1218,6 +1232,9 @@ def test_refresh_publish_job_status_marks_rejected_jobs_and_keeps_amazon_reasons
     assert serialized.rejection_reasons == [
         "Image crop does not match the supported module requirements.; Hero alt text exceeds the approved length."
     ]
+    assert dispatched
+    notification = next(item for item in session.added if type(item).__name__ == "SlackNotification")
+    assert notification.notification_type == "aplus_rejected"
 
 
 def test_generate_draft_creates_original_and_translated_variants() -> None:

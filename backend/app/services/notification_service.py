@@ -11,6 +11,7 @@ from app.models.entities import EventLog, SlackNotification, User
 from app.models.enums import JobStatus
 from app.schemas.event import EventListResponse, EventLogResponse, SlackNotificationLogResponse
 from app.schemas.notification import SlackTestResponse
+from app.services.slack_formatter import SlackNotificationFormatter
 from app.services.slack_service import SlackWebhookService
 
 
@@ -19,9 +20,11 @@ class NotificationService:
         self,
         db_session: Session,
         slack_service: SlackWebhookService | None = None,
+        formatter: SlackNotificationFormatter | None = None,
     ) -> None:
         self.db_session = db_session
         self.slack_service = slack_service or SlackWebhookService()
+        self.formatter = formatter or SlackNotificationFormatter()
 
     def list_events(self, *, limit: int = 50) -> EventListResponse:
         events = self.db_session.execute(
@@ -54,6 +57,40 @@ class NotificationService:
             status=JobStatus.PENDING.value,
             message="Slack test notification queued for background delivery.",
         )
+
+    def queue_new_order_notification(
+        self,
+        *,
+        marketplace_id: str,
+        order_id: str,
+        sku: str,
+        asin: str,
+        quantity: int,
+        status: str = "new",
+        product_title: str | None = None,
+        occurred_at: datetime | None = None,
+    ) -> SlackNotification:
+        timestamp = occurred_at or self._now()
+        notification = self.queue_event_notification(
+            event_type="new_order",
+            source="orders_api",
+            event_status=status,
+            event_payload={
+                "marketplace_id": marketplace_id,
+                "order_id": order_id,
+                "sku": sku,
+                "asin": asin,
+                "quantity": quantity,
+                "status": status,
+                "product_title": product_title,
+            },
+            notification_type="new_order",
+            message_preview=f"New Amazon order detected for {sku}.",
+            occurred_at=timestamp,
+        )
+        self.db_session.commit()
+        self.dispatch_notification(notification.id)
+        return notification
 
     def queue_event_notification(
         self,
@@ -126,51 +163,42 @@ class NotificationService:
         event: EventLog,
         notification: SlackNotification,
     ) -> tuple[str, list[dict[str, Any]]]:
-        summary = notification.message_preview
-        payload_preview = self._format_payload_preview(event.payload)
-        blocks: list[dict[str, Any]] = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*{summary}*",
-                },
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": (
-                            f"event: `{event.event_type}`  "
-                            f"source: `{event.source}`  "
-                            f"status: `{event.status}`"
-                        ),
-                    }
-                ],
-            },
-        ]
-
-        if payload_preview:
-            blocks.append(
+        try:
+            message = self.formatter.format_message(
+                event_type=event.event_type,
+                source=event.source,
+                event_status=event.status,
+                payload=event.payload,
+                occurred_at=event.occurred_at,
+                notification_type=notification.notification_type,
+                message_preview=notification.message_preview,
+            )
+            return message.text, message.blocks
+        except Exception:
+            summary = notification.message_preview
+            fallback = summary
+            return fallback, [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"```{payload_preview}```",
+                        "text": f"*{summary}*",
                     },
-                }
-            )
-
-        return summary, blocks
-
-    @staticmethod
-    def _format_payload_preview(payload: dict[str, object]) -> str:
-        compact_items = []
-        for key, value in payload.items():
-            compact_items.append(f"{key}: {value}")
-        preview = " | ".join(compact_items)
-        return preview[:900]
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"event: `{event.event_type}`  "
+                                f"source: `{event.source}`  "
+                                f"status: `{event.status}`"
+                            ),
+                        }
+                    ],
+                },
+            ]
 
     @staticmethod
     def _serialize_event(event: EventLog) -> EventLogResponse:
