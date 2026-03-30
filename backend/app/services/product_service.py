@@ -130,6 +130,7 @@ class ProductService:
                 source="products_api",
                 event_status=JobStatus.SUCCEEDED.value,
                 event_payload={
+                    "marketplace_id": product.marketplace_id,
                     "sku": product.sku,
                     "asin": product.asin,
                     "old_price_amount": str(old_price_amount) if old_price_amount is not None else None,
@@ -169,6 +170,7 @@ class ProductService:
                 source="products_api",
                 event_status=JobStatus.FAILED.value,
                 event_payload={
+                    "marketplace_id": product.marketplace_id,
                     "sku": product.sku,
                     "asin": product.asin,
                     "attempted_price_amount": str(price_amount),
@@ -230,10 +232,12 @@ class ProductService:
                     source="products_api",
                     event_status=alert.severity,
                     event_payload={
+                        "marketplace_id": product.marketplace_id,
                         "sku": product.sku,
                         "asin": product.asin,
                         "available_quantity": quantity,
                         "threshold": product.low_stock_threshold,
+                        "stock_health": snapshot.alert_status,
                         "message": alert.message,
                     },
                     notification_type="low_stock_threshold_reached",
@@ -257,6 +261,7 @@ class ProductService:
                 source="products_api",
                 event_status=JobStatus.SUCCEEDED.value,
                 event_payload={
+                    "marketplace_id": product.marketplace_id,
                     "sku": product.sku,
                     "asin": product.asin,
                     "old_quantity": old_quantity,
@@ -293,6 +298,7 @@ class ProductService:
                 source="products_api",
                 event_status=JobStatus.FAILED.value,
                 event_payload={
+                    "marketplace_id": product.marketplace_id,
                     "sku": product.sku,
                     "asin": product.asin,
                     "attempted_quantity": quantity,
