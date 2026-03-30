@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 
@@ -72,9 +73,18 @@ class AmazonSpApiClient:
         content: bytes,
         content_type: str,
     ) -> None:
+        query_field_names = {
+            key
+            for key, _ in parse_qsl(urlsplit(url).query, keep_blank_values=True)
+        }
+        request_fields = {
+            key: value
+            for key, value in form_fields.items()
+            if key not in query_field_names
+        }
         response = self.http_client.post(
             url,
-            data=form_fields,
+            data=request_fields,
             files={"file": (file_name, content, content_type)},
             headers={"user-agent": "amazon-seller-ops/0.1.0"},
         )
