@@ -3,24 +3,35 @@ import {
   CheckCircle2,
   Info,
   Languages,
+  LoaderCircle,
   Package2,
   ShieldAlert,
+  WandSparkles,
 } from "lucide-react";
 
-import type { AplusDraftResponse, ProductListItem } from "../../lib/api";
+import type { AplusDraftResponse, AplusReadinessIssue, ProductListItem } from "../../lib/api";
+import { getReadinessIssueKey, type AplusReadinessFixAction } from "./readinessFixes";
 import { AplusDraftStateBadge } from "./AplusDraftStateBadge";
 import { formatLanguageLabel } from "./languages";
+
 
 type AplusReadinessPanelProps = {
   draft: AplusDraftResponse | null;
   product: ProductListItem | null;
   hasUnsavedChanges: boolean;
+  getBlockingIssueFixAction?: (issue: AplusReadinessIssue) => AplusReadinessFixAction | null;
+  onApplyBlockingIssueFix?: (issue: AplusReadinessIssue) => void;
+  blockingIssueFixInFlightKey?: string | null;
 };
+
 
 export function AplusReadinessPanel({
   draft,
   product,
   hasUnsavedChanges,
+  getBlockingIssueFixAction,
+  onApplyBlockingIssueFix,
+  blockingIssueFixInFlightKey,
 }: AplusReadinessPanelProps) {
   const readiness = draft?.readiness_report ?? null;
 
@@ -93,10 +104,22 @@ export function AplusReadinessPanel({
             emptyMessage="No blocking issues found. This validated draft is safe to submit in the current Amazon subset."
             icon={AlertTriangle}
             tone="danger"
-            items={readiness.blocking_errors.map((issue) => ({
-              title: issue.field_label ?? "Draft issue",
-              message: issue.message,
-            }))}
+            items={readiness.blocking_errors.map((issue) => {
+              const action = getBlockingIssueFixAction?.(issue) ?? null;
+              return {
+                key: getReadinessIssueKey(issue),
+                title: issue.field_label ?? "Draft issue",
+                message: issue.message,
+                action:
+                  action && onApplyBlockingIssueFix
+                    ? {
+                        ...action,
+                        pending: blockingIssueFixInFlightKey === getReadinessIssueKey(issue),
+                        onClick: () => onApplyBlockingIssueFix(issue),
+                      }
+                    : null,
+              };
+            })}
           />
           <IssueList
             title="Warnings"
@@ -104,8 +127,10 @@ export function AplusReadinessPanel({
             icon={Info}
             tone="warning"
             items={readiness.warnings.map((issue) => ({
+              key: getReadinessIssueKey(issue),
               title: issue.field_label ?? "Editorial warning",
               message: issue.message,
+              action: null,
             }))}
           />
         </div>
@@ -119,7 +144,7 @@ export function AplusReadinessPanel({
               <MetaRow label="Checked payload" value={readiness.checked_payload} />
               <MetaRow
                 label="Draft mode"
-                value={draft.auto_translate ? "Translated variation" : "Original draft"}
+                value={draft.variant_role === "translated" ? "Translated variant" : "Original draft"}
               />
             </dl>
           </article>
@@ -181,12 +206,24 @@ function SummaryPill({ label, value, tone }: SummaryPillProps) {
   );
 }
 
+type IssueListItem = {
+  key: string;
+  title: string;
+  message: string;
+  action: {
+    label: string;
+    description: string;
+    pending: boolean;
+    onClick: () => void;
+  } | null;
+};
+
 type IssueListProps = {
   title: string;
   emptyMessage: string;
   icon: typeof AlertTriangle;
   tone: "warning" | "danger";
-  items: Array<{ title: string; message: string }>;
+  items: IssueListItem[];
 };
 
 function IssueList({ title, emptyMessage, icon: Icon, tone, items }: IssueListProps) {
@@ -206,7 +243,7 @@ function IssueList({ title, emptyMessage, icon: Icon, tone, items }: IssueListPr
         <div className="mt-4 space-y-3">
           {items.map((item) => (
             <div
-              key={`${item.title}-${item.message}`}
+              key={item.key}
               className={[
                 "rounded-[1rem] border px-3 py-3",
                 tone === "danger"
@@ -221,9 +258,37 @@ function IssueList({ title, emptyMessage, icon: Icon, tone, items }: IssueListPr
                     tone === "danger" ? "text-rose-200" : "text-amber-200",
                   ].join(" ")}
                 />
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-white">{item.title}</p>
                   <p className="mt-1 text-sm leading-6 text-slate-300">{item.message}</p>
+                  {item.action ? (
+                    <div className="mt-3 rounded-[0.95rem] border border-white/10 bg-black/20 px-3 py-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-white">Recommended fix</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-400">{item.action.description}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={item.action.onClick}
+                          disabled={item.action.pending}
+                          className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {item.action.pending ? (
+                            <>
+                              <LoaderCircle className="h-4 w-4 animate-spin" />
+                              Applying...
+                            </>
+                          ) : (
+                            <>
+                              <WandSparkles className="h-4 w-4" />
+                              {item.action.label}
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>

@@ -15,6 +15,10 @@ import { AplusOptimizationPanel } from "../components/aplus/AplusOptimizationPan
 import { AplusPublishLifecycleCard } from "../components/aplus/AplusPublishLifecycleCard";
 import { AplusPreviewModal } from "../components/aplus/AplusPreviewModal";
 import { AplusReadinessPanel } from "../components/aplus/AplusReadinessPanel";
+import {
+  getReadinessIssueKey,
+  type AplusReadinessFixAction,
+} from "../components/aplus/readinessFixes";
 import { AplusScoreBadge } from "../components/aplus/AplusScoreBadge";
 import { AplusSectionWarnings } from "../components/aplus/AplusSectionWarnings";
 import { DraftMetadataBar } from "../components/aplus/DraftMetadataBar";
@@ -44,6 +48,7 @@ import {
   type AplusImprovementCategory,
   type AplusPublishJobResponse,
   type AplusDraftResponse,
+  type AplusReadinessIssue,
   type AplusLanguage,
   type AplusModulePayload,
   type AplusOptimizationSuggestion,
@@ -148,6 +153,117 @@ function getOptimizationSuggestions(
   );
 }
 
+type ReadinessFixPlan = {
+  label: string;
+  description: string;
+  confirmMessage: string | null;
+  successMessage: string;
+  run: (payload: AplusDraftPayload) => AplusDraftPayload;
+};
+
+function parseIssueModuleIndex(issue: AplusReadinessIssue): number | null {
+  const match = issue.field_label?.match(/Module\s+(\d+)/i);
+  if (!match) {
+    return null;
+  }
+
+  const index = Number.parseInt(match[1] ?? "", 10);
+  return Number.isFinite(index) && index > 0 ? index - 1 : null;
+}
+
+function clearModuleImageFields(module: AplusModulePayload): AplusModulePayload {
+  return {
+    ...module,
+    image_mode: "none",
+    image_prompt: null,
+    generated_image_url: null,
+    uploaded_image_url: null,
+    selected_asset_id: null,
+    reference_asset_ids: [],
+    image_status: "idle",
+    image_error_message: null,
+    image_request_fingerprint: null,
+  };
+}
+
+function buildReadinessFixPlan(
+  issue: AplusReadinessIssue,
+  payload: AplusDraftPayload | null,
+): ReadinessFixPlan | null {
+  if (!payload) {
+    return null;
+  }
+
+  const moduleIndex = parseIssueModuleIndex(issue);
+  if (moduleIndex === null) {
+    return null;
+  }
+
+  const targetModule = payload.modules[moduleIndex];
+  if (!targetModule) {
+    return null;
+  }
+
+  if (issue.code === "unsupported_module_image") {
+    return {
+      label: "Remove image",
+      description:
+        "Keep this module text-only by clearing the image mode, image URLs, selected asset, and reference assets.",
+      confirmMessage:
+        `Remove the unsupported image from Module ${moduleIndex + 1}? This will keep the copy unchanged and clear only image-related fields.`,
+      successMessage: `Removed unsupported image fields from Module ${moduleIndex + 1} and refreshed publish readiness.`,
+      run: (currentPayload) => ({
+        ...currentPayload,
+        modules: currentPayload.modules.map((module, index) =>
+          index === moduleIndex ? clearModuleImageFields(module) : module,
+        ),
+      }),
+    };
+  }
+
+  if (issue.code === "unsupported_overlay" || issue.code === "overlay_without_image") {
+    return {
+      label: "Remove overlay text",
+      description:
+        "Clear the overlay text while keeping the module body, bullets, image mode, and other content unchanged.",
+      confirmMessage:
+        `Remove unsupported overlay text from Module ${moduleIndex + 1}? This only clears the overlay field.`,
+      successMessage: `Removed unsupported overlay text from Module ${moduleIndex + 1} and refreshed publish readiness.`,
+      run: (currentPayload) => ({
+        ...currentPayload,
+        modules: currentPayload.modules.map((module, index) =>
+          index === moduleIndex ? { ...module, overlay_text: null } : module,
+        ),
+      }),
+    };
+  }
+
+  if (issue.code === "unsupported_module_type" && targetModule.module_type === "comparison") {
+    return {
+      label: "Convert to FAQ",
+      description:
+        "Convert this editorial-only comparison module into a publish-supported text-only FAQ fallback and clear unsupported image fields.",
+      confirmMessage:
+        `Convert Module ${moduleIndex + 1} from Comparison to FAQ? Existing copy stays in place, but unsupported image and overlay fields will be removed.`,
+      successMessage: `Converted Module ${moduleIndex + 1} into a publish-supported FAQ fallback and refreshed readiness.`,
+      run: (currentPayload) => ({
+        ...currentPayload,
+        modules: currentPayload.modules.map((module, index) =>
+          index === moduleIndex
+            ? {
+                ...clearModuleImageFields(module),
+                module_type: "faq",
+                overlay_text: null,
+              }
+            : module,
+        ),
+      }),
+    };
+  }
+
+  return null;
+}
+
 export function AplusStudioPage() {
   const { token } = useAuth();
   const [products, setProducts] = useState<ProductListItem[]>([]);
@@ -173,6 +289,7 @@ export function AplusStudioPage() {
   const [isImprovingCategory, setIsImprovingCategory] =
     useState<AplusImprovementCategory | null>(null);
   const [isApplyingImprovement, setIsApplyingImprovement] = useState(false);
+  const [readinessFixIssueKey, setReadinessFixIssueKey] = useState<string | null>(null);
   const [switchingVariantId, setSwitchingVariantId] = useState<string | null>(null);
   const [expandedModules, setExpandedModules] = useState<number[]>([0]);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
@@ -671,6 +788,85 @@ export function AplusStudioPage() {
       selectDraft(nextDraft);
       setSwitchingVariantId(null);
     });
+  }
+
+  function getBlockingIssueFixAction(issue: AplusReadinessIssue): AplusReadinessFixAction | null {
+    const plan = buildReadinessFixPlan(issue, editorDraft);
+    if (plan) {
+      return {
+        label: plan.label,
+        description: plan.description,
+      };
+    }
+
+    const moduleIndex = parseIssueModuleIndex(issue);
+    if (
+      moduleIndex !== null &&
+      [
+        "missing_required_publish_image",
+        "missing_generated_image",
+        "missing_uploaded_image",
+        "missing_existing_asset",
+      ].includes(issue.code)
+    ) {
+      return {
+        label: "Open image controls",
+        description:
+          "Open this module in the editor so you can upload, select, or generate the required publishable image.",
+      };
+    }
+
+    return null;
+  }
+
+  async function handleApplyBlockingIssueFix(issue: AplusReadinessIssue) {
+    const issueKey = getReadinessIssueKey(issue);
+    const moduleIndex = parseIssueModuleIndex(issue);
+    const plan = buildReadinessFixPlan(issue, editorDraft);
+
+    if (
+      !plan &&
+      moduleIndex !== null &&
+      [
+        "missing_required_publish_image",
+        "missing_generated_image",
+        "missing_uploaded_image",
+        "missing_existing_asset",
+      ].includes(issue.code)
+    ) {
+      setExpandedModules((current) => (current.includes(moduleIndex) ? current : [...current, moduleIndex]));
+      setStatusMessage(`Opened Module ${moduleIndex + 1} so you can resolve its publish image requirement.`);
+      setError(null);
+      return;
+    }
+
+    if (!plan || !token || !selectedDraftId || !editorDraft) {
+      return;
+    }
+
+    if (plan.confirmMessage && !window.confirm(plan.confirmMessage)) {
+      return;
+    }
+
+    setReadinessFixIssueKey(issueKey);
+    setError(null);
+    setStatusMessage(null);
+
+    try {
+      const updatedDraft = await saveAplusDraft(token, {
+        draft_id: selectedDraftId,
+        draft_payload: plan.run(structuredClone(editorDraft)),
+      });
+      upsertDraft(updatedDraft);
+      selectDraft(updatedDraft);
+      setStatusMessage(plan.successMessage);
+    } catch (fixError) {
+      setError(
+        fixError instanceof Error ? fixError.message : "Unable to apply the publish-readiness fix.",
+      );
+    } finally {
+      setReadinessFixIssueKey(null);
+    }
   }
 
   function updateModule(
@@ -1235,6 +1431,9 @@ export function AplusStudioPage() {
                       draft={selectedDraft}
                       product={selectedProduct}
                       hasUnsavedChanges={hasUnsavedChanges}
+                      getBlockingIssueFixAction={getBlockingIssueFixAction}
+                      onApplyBlockingIssueFix={(issue) => void handleApplyBlockingIssueFix(issue)}
+                      blockingIssueFixInFlightKey={readinessFixIssueKey}
                     />
                   </div>
 
