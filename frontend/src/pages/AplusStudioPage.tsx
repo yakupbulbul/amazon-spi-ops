@@ -1211,23 +1211,40 @@ export function AplusStudioPage() {
       return;
     }
 
-    if (hasUnsavedChanges) {
-      setError("Validate or save the current draft before running background image generation.");
-      return;
-    }
-
-    const module = editorDraft.modules[index];
     try {
+      let activeDraftId = selectedDraftId;
+      let activeDraftPayload = editorDraft;
+
+      if (hasUnsavedChanges) {
+        const savedDraft = await saveAplusDraft(token, {
+          draft_id: selectedDraftId,
+          draft_payload: editorDraft,
+        });
+        upsertDraft(savedDraft);
+        selectDraft(savedDraft);
+        activeDraftId = savedDraft.id;
+        activeDraftPayload = savedDraft.draft_payload;
+      }
+
+      const activeModule = activeDraftPayload.modules[index];
+      if (!activeModule) {
+        throw new Error("The selected module is no longer available for image generation.");
+      }
+
       const draft = await generateAplusModuleImage(token, {
-        draft_id: selectedDraftId,
-        module_id: module.module_id,
-        image_prompt: module.image_prompt,
-        overlay_text: module.overlay_text,
-        reference_asset_ids: module.reference_asset_ids,
+        draft_id: activeDraftId,
+        module_id: activeModule.module_id,
+        image_prompt: activeModule.image_prompt,
+        overlay_text: activeModule.overlay_text,
+        reference_asset_ids: activeModule.reference_asset_ids,
       });
       upsertDraft(draft);
       selectDraft(draft);
-      setStatusMessage(`Image generation queued for module ${index + 1}.`);
+      setStatusMessage(
+        hasUnsavedChanges
+          ? `Saved the latest module changes and queued image generation for module ${index + 1}.`
+          : `Image generation queued for module ${index + 1}.`,
+      );
       setError(null);
     } catch (generationError) {
       setError(
@@ -2028,7 +2045,7 @@ export function AplusStudioPage() {
                         onUploadImage={(file) => void handleModuleImageUpload(index, file)}
                         onSelectAsset={(asset) => attachExistingAsset(index, asset)}
                         onClearImage={() => clearModuleImage(index)}
-                        canGenerateImage={Boolean(selectedDraftId) && !hasUnsavedChanges}
+                        canGenerateImage={Boolean(selectedDraftId)}
                         onGenerateImage={() => void handleGenerateModuleImage(index)}
                       />
                     ))}
