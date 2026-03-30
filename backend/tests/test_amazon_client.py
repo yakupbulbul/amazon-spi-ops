@@ -27,16 +27,18 @@ def build_settings() -> Settings:
     )
 
 
-def test_upload_to_destination_drops_query_duplicate_form_fields() -> None:
+def test_upload_to_destination_moves_signed_query_fields_into_form_body() -> None:
     http_client = RecordingHttpClient()
     client = AmazonSpApiClient(build_settings(), http_client=http_client)
 
     client.upload_to_destination(
-        url="https://uploads.example.com/content?acl=bucket-owner-full-control&policy=signed-policy",
+        url=(
+            "https://uploads.example.com/content"
+            "?acl=bucket-owner-full-control"
+            "&policy=signed-policy"
+            "&key=aplus/asset.jpg"
+        ),
         form_fields={
-            "acl": "bucket-owner-full-control",
-            "policy": "signed-policy",
-            "key": "aplus/asset.jpg",
             "x-amz-meta-origin": "studio",
         },
         file_name="asset.jpg",
@@ -46,7 +48,10 @@ def test_upload_to_destination_drops_query_duplicate_form_fields() -> None:
 
     assert len(http_client.post_calls) == 1
     payload = http_client.post_calls[0]
+    assert payload["url"] == "https://uploads.example.com/content"
     assert payload["data"] == {
+        "acl": "bucket-owner-full-control",
+        "policy": "signed-policy",
         "key": "aplus/asset.jpg",
         "x-amz-meta-origin": "studio",
     }
