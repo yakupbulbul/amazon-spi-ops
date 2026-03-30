@@ -1,6 +1,7 @@
 import {
   ImageOff,
   Images,
+  Info,
   LoaderCircle,
   Sparkles,
   Upload,
@@ -55,6 +56,37 @@ const imageModes: Array<{
   },
 ];
 
+type PublishImageRequirement = {
+  minWidth: number;
+  minHeight: number;
+  aspectRatioLabel: string;
+  autoPrepLabel: string;
+};
+
+function getPublishImageRequirement(
+  moduleType: AplusModulePayload["module_type"],
+): PublishImageRequirement | null {
+  if (moduleType === "hero") {
+    return {
+      minWidth: 970,
+      minHeight: 600,
+      aspectRatioLabel: "97:60",
+      autoPrepLabel: "Uploads are auto-prepared to 970 x 600 for publish.",
+    };
+  }
+
+  if (moduleType === "feature") {
+    return {
+      minWidth: 300,
+      minHeight: 300,
+      aspectRatioLabel: "1:1",
+      autoPrepLabel: "Uploads are auto-prepared to 300 x 300 for publish.",
+    };
+  }
+
+  return null;
+}
+
 export function AplusModuleImageSection({
   module,
   assets,
@@ -70,6 +102,7 @@ export function AplusModuleImageSection({
 }: AplusModuleImageSectionProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeImageUrl = getActiveImageUrl(module, assets);
+  const publishRequirement = getPublishImageRequirement(module.module_type);
 
   return (
     <section className="space-y-4 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
@@ -90,6 +123,28 @@ export function AplusModuleImageSection({
           </button>
         ) : null}
       </div>
+
+      {publishRequirement ? (
+        <div className="rounded-[1rem] border border-emerald-300/15 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium text-white">Amazon publish image requirement</p>
+              <p className="mt-1 leading-6 text-emerald-100/90">
+                Minimum {publishRequirement.minWidth} x {publishRequirement.minHeight} px, target ratio {publishRequirement.aspectRatioLabel}.
+              </p>
+              <p className="mt-1 text-xs leading-5 text-emerald-100/80">
+                {publishRequirement.autoPrepLabel}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-[1rem] border border-amber-300/15 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100">
+          This module type is text-only in the current Amazon publish subset. If you add an image here,
+          the readiness panel will ask you to remove it before publish.
+        </div>
+      )}
 
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         {imageModes.map((mode) => {
@@ -138,6 +193,7 @@ export function AplusModuleImageSection({
                 <p className="text-sm text-white">Upload module image</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   JPG, PNG, or WEBP. Uploaded assets are added to the reusable asset library.
+                  {publishRequirement ? ` ${publishRequirement.autoPrepLabel}` : ""}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
@@ -165,6 +221,9 @@ export function AplusModuleImageSection({
                   <p className="text-sm text-white">Asset library</p>
                   <p className="mt-1 text-xs leading-5 text-slate-500">
                     Select from product, brand, logo, or previously generated assets.
+                    {publishRequirement
+                      ? ` Choose assets that already meet at least ${publishRequirement.minWidth} x ${publishRequirement.minHeight} px.`
+                      : ""}
                   </p>
                 </div>
                 {isLoadingAssets ? (
@@ -222,6 +281,9 @@ export function AplusModuleImageSection({
             <div className="space-y-4">
               <div className="rounded-[1rem] border border-sky-300/15 bg-sky-500/10 px-4 py-3 text-sm leading-6 text-sky-100">
                 AI generation will use these prompt fields and optional reference assets in the next step.
+                {publishRequirement
+                  ? ` Target at least ${publishRequirement.minWidth} x ${publishRequirement.minHeight} px.`
+                  : ""}
               </div>
               <label className="block space-y-2">
                 <span className="text-sm text-slate-300">Image prompt</span>
@@ -322,45 +384,47 @@ export function AplusModuleImageSection({
           ) : null}
 
           {module.image_mode === "none" ? (
-            <div className="rounded-[1rem] border border-dashed border-white/10 bg-slate-950/60 px-4 py-4 text-sm leading-6 text-slate-400">
-              This module will stay text-only until you choose an image source.
+            <div className="rounded-[1rem] border border-dashed border-white/10 bg-slate-950/60 px-4 py-5 text-sm leading-6 text-slate-400">
+              No image is attached to this module yet. You can keep it text-only or add one of the supported image sources.
             </div>
           ) : null}
 
-          {uploadError || module.image_error_message ? (
-            <div className="rounded-[1rem] border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-              {uploadError ?? module.image_error_message}
+          {uploadError ? (
+            <div className="rounded-[1rem] border border-rose-300/20 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-100">
+              {uploadError}
             </div>
           ) : null}
 
-          {module.image_status !== "idle" ? (
-            <div className="rounded-[1rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-xs uppercase tracking-[0.18em] text-slate-400">
-              Image status: {module.image_status.replace("_", " ")}
+          {module.image_error_message ? (
+            <div className="rounded-[1rem] border border-rose-300/20 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-100">
+              {module.image_error_message}
             </div>
           ) : null}
         </div>
 
-        <div className="rounded-[1rem] border border-white/10 bg-slate-950/60 p-4">
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Active image source</p>
-          <p className="mt-2 text-sm font-medium text-white">{imageModeLabel(module.image_mode)}</p>
-          <div className="mt-4 overflow-hidden rounded-[1rem] border border-white/10 bg-slate-900">
+        <div className="space-y-3">
+          <div className="overflow-hidden rounded-[1rem] border border-white/10 bg-slate-950/70">
             {activeImageUrl ? (
               <img
                 src={activeImageUrl}
-                alt={module.headline}
-                className="aspect-[4/3] h-full w-full object-cover"
+                alt={module.headline || "Module image preview"}
+                className="aspect-[4/3] w-full object-cover"
               />
             ) : (
-              <div className="flex aspect-[4/3] items-center justify-center px-4 text-center text-sm leading-6 text-slate-500">
-                No image selected for this module yet.
+              <div className="flex aspect-[4/3] items-center justify-center text-slate-500">
+                <ImageOff className="h-6 w-6" />
               </div>
             )}
           </div>
-          {module.overlay_text ? (
-            <div className="mt-4 rounded-full bg-white/[0.06] px-3 py-2 text-xs text-slate-200">
-              Overlay: {module.overlay_text}
-            </div>
-          ) : null}
+          <div className="rounded-[1rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Active source</p>
+            <p className="mt-2 text-sm font-medium text-white">{imageModeLabel(module.image_mode)}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              {activeImageUrl
+                ? "This image will be used for preview and publish preparation when the module type supports it."
+                : "No image selected yet."}
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -374,7 +438,7 @@ function getActiveImageUrl(module: AplusModulePayload, assets: AplusAsset[]): st
   if (module.image_mode === "generated" && module.generated_image_url) {
     return module.generated_image_url;
   }
-  if (module.selected_asset_id) {
+  if (module.image_mode === "existing_asset" && module.selected_asset_id) {
     return assets.find((asset) => asset.id === module.selected_asset_id)?.public_url ?? null;
   }
   return null;
@@ -382,10 +446,11 @@ function getActiveImageUrl(module: AplusModulePayload, assets: AplusAsset[]): st
 
 function imageModeLabel(mode: AplusModulePayload["image_mode"]): string {
   const mapping: Record<AplusModulePayload["image_mode"], string> = {
-    none: "No image",
+    none: "Text-only module",
     uploaded: "Uploaded image",
     existing_asset: "Existing asset",
     generated: "AI-generated image",
   };
+
   return mapping[mode];
 }

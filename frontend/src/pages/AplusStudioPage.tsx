@@ -205,6 +205,110 @@ function clearModuleImageFields(module: AplusModulePayload): AplusModulePayload 
   };
 }
 
+type PublishUploadRequirement = {
+  width: number;
+  height: number;
+};
+
+function getPublishUploadRequirement(
+  moduleType: AplusModulePayload["module_type"],
+): PublishUploadRequirement | null {
+  if (moduleType === "hero") {
+    return { width: 970, height: 600 };
+  }
+
+  if (moduleType === "feature") {
+    return { width: 300, height: 300 };
+  }
+
+  return null;
+}
+
+async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  const imageUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image();
+      nextImage.onload = () => resolve(nextImage);
+      nextImage.onerror = () => reject(new Error("Unable to read the selected image."));
+      nextImage.src = imageUrl;
+    });
+    return { width: image.naturalWidth, height: image.naturalHeight };
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
+async function prepareImageForPublishRequirement(
+  file: File,
+  requirement: PublishUploadRequirement,
+): Promise<{ file: File; wasPrepared: boolean }> {
+  const { width, height } = await readImageDimensions(file);
+  if (width >= requirement.width && height >= requirement.height) {
+    return { file, wasPrepared: false };
+  }
+
+  const imageUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image();
+      nextImage.onload = () => resolve(nextImage);
+      nextImage.onerror = () => reject(new Error("Unable to prepare the selected image."));
+      nextImage.src = imageUrl;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = requirement.width;
+    canvas.height = requirement.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Unable to prepare the selected image for Amazon publish.");
+    }
+
+    const scale = Math.max(requirement.width / image.naturalWidth, requirement.height / image.naturalHeight);
+    const drawWidth = image.naturalWidth * scale;
+    const drawHeight = image.naturalHeight * scale;
+    const offsetX = (requirement.width - drawWidth) / 2;
+    const offsetY = (requirement.height - drawHeight) / 2;
+
+    context.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+
+    const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((nextBlob) => {
+        if (nextBlob) {
+          resolve(nextBlob);
+        } else {
+          reject(new Error("Unable to create a publish-ready image."));
+        }
+      }, outputType, 0.92);
+    });
+
+    const extension = outputType === "image/png" ? "png" : "jpg";
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "aplus-image";
+    return {
+      file: new File([blob], `${baseName}-publish.${extension}`, {
+        type: outputType,
+        lastModified: Date.now(),
+      }),
+      wasPrepared: true,
+    };
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
+function buildPreparedUploadMessage(
+  moduleType: AplusModulePayload["module_type"],
+): string | null {
+  const requirement = getPublishUploadRequirement(moduleType);
+  if (!requirement) {
+    return null;
+  }
+
+  return `Image auto-prepared to ${requirement.width} x ${requirement.height} px for ${moduleType} publish requirements.`;
+}
+
 function buildReadinessFixPlan(
   issue: AplusReadinessIssue,
   payload: AplusDraftPayload | null,
@@ -947,8 +1051,13 @@ export function AplusStudioPage() {
     }));
 
     try {
+      const targetModule = editorDraft.modules[index];
+      const requirement = targetModule ? getPublishUploadRequirement(targetModule.module_type) : null;
+      const preparedUpload = requirement
+        ? await prepareImageForPublishRequirement(file, requirement)
+        : { file, wasPrepared: false };
       const asset = await uploadAplusAsset(token, {
-        file,
+        file: preparedUpload.file,
         asset_scope: selectedProduct?.brand ? "product" : "brand",
         product_id: selectedProductId,
         label: `${selectedProduct?.sku ?? "Asset"} · ${editorDraft.modules[index]?.headline ?? "Module image"}`,
@@ -968,6 +1077,9 @@ export function AplusStudioPage() {
         ...current,
         [index]: { pending: false, error: null },
       }));
+      if (preparedUpload.wasPrepared) {
+        setStatusMessage(buildPreparedUploadMessage(targetModule.module_type));
+      }
     } catch (uploadError) {
       setImageUploadState((current) => ({
         ...current,
