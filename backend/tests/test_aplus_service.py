@@ -683,6 +683,82 @@ def test_publish_to_amazon_maps_supported_subset_and_runs_real_stage_order() -> 
     ]
 
 
+def test_publish_to_amazon_truncates_publish_alt_text_to_amazon_limit() -> None:
+    product = build_publish_product()
+
+    with TemporaryDirectory() as tmpdir:
+        storage = MediaStorageService(root=Path(tmpdir), url_prefix="/media")
+        storage.ensure_directories()
+        _, generated_url = storage.store_bytes(
+            subdirectory="aplus-assets",
+            suffix=".png",
+            content=b"\x89PNG\r\n\x1a\ntest-generated",
+        )
+        session = FakeSession()
+        generated_asset_id = uuid4()
+        session.registry[("AplusAsset", generated_asset_id)] = SimpleNamespace(
+            id=generated_asset_id,
+            product_id=product.id,
+            asset_metadata={},
+            file_name="generated.png",
+            mime_type="image/png",
+            public_url=generated_url,
+        )
+
+        amazon_service = StubAmazonService()
+        service = AplusService(
+            session,
+            amazon_service,  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            storage,
+        )
+        service._read_image_dimensions = staticmethod(  # type: ignore[method-assign]
+            lambda *, content, expected_mime_type, field_label: (1200, 800)
+        )
+        payload = build_publish_payload(
+            [
+                {
+                    "module_type": "hero",
+                    "headline": "Hero with image",
+                    "body": "Lead with the main benefit and support it with a publishable hero image.",
+                    "bullets": ["Comfort first", "Use-case clarity"],
+                    "image_brief": (
+                        "Show the product in a clean daily-use scene with realistic scale, "
+                        "clear material detail, and an overlay-ready comfort message for shoppers."
+                    ),
+                    "image_mode": "generated",
+                    "generated_image_url": generated_url,
+                    "selected_asset_id": str(generated_asset_id),
+                },
+                {
+                    "module_type": "feature",
+                    "headline": "Feature detail",
+                    "body": "Use a supporting close-up for the secondary module.",
+                    "bullets": ["Benefit one", "Benefit two"],
+                    "image_brief": "Show a close-up detail view.",
+                    "image_mode": "generated",
+                    "generated_image_url": generated_url,
+                    "selected_asset_id": str(generated_asset_id),
+                },
+                {
+                    "module_type": "faq",
+                    "headline": "Trust block",
+                    "body": "Plain text reassurance keeps the supported subset valid.",
+                    "bullets": [],
+                    "image_brief": "No image required.",
+                },
+            ]
+        )
+
+        service._publish_to_amazon(product=product, draft_payload=payload, target_language="de-DE")
+
+    validate_call = next(call for call in amazon_service.calls if call[0] == "validate_aplus_content_document")
+    modules = validate_call[3]["contentDocument"]["contentModuleList"]
+    hero_alt_text = modules[0]["standardHeaderImageText"]["block"]["image"]["altText"]
+    assert len(hero_alt_text) <= 100
+    assert hero_alt_text.startswith("Show the product in a clean daily-use scene")
+
+
 def test_publish_to_amazon_blocks_missing_generated_image_asset() -> None:
     product = build_publish_product()
     service = AplusService(

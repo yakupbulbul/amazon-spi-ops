@@ -607,7 +607,7 @@ class AplusService:
                 )
             return PreparedAmazonImageAsset(
                 upload_destination_id=str(cached_upload["upload_destination_id"]),
-                alt_text=module.image_brief.strip(),
+                alt_text=self._build_publish_alt_text(module=module),
                 width_pixels=width_pixels,
                 height_pixels=height_pixels,
                 crop_width_pixels=int(crop_width_pixels),
@@ -682,7 +682,7 @@ class AplusService:
 
         return PreparedAmazonImageAsset(
             upload_destination_id=str(upload_destination_id),
-            alt_text=module.image_brief.strip(),
+            alt_text=self._build_publish_alt_text(module=module),
             width_pixels=width_pixels,
             height_pixels=height_pixels,
             crop_width_pixels=crop_width_pixels,
@@ -691,6 +691,21 @@ class AplusService:
             crop_offset_y_pixels=crop_offset_y_pixels,
             asset_id=str(asset.id),
         )
+
+    @staticmethod
+    def _build_publish_alt_text(*, module: AplusModulePayload) -> str:
+        source = " ".join((module.image_brief or "").split()).strip()
+        if not source:
+            source = " ".join((module.headline or "").split()).strip() or "Product image"
+        if len(source) <= 100:
+            return source
+
+        truncated = source[:100].rstrip()
+        if " " in truncated:
+            candidate = truncated.rsplit(" ", 1)[0].strip()
+            if len(candidate) >= 40:
+                truncated = candidate
+        return truncated
 
     @staticmethod
     def _read_image_dimensions(
