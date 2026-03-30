@@ -128,8 +128,10 @@ function getEditablePayload(draft: AplusDraftResponse | null): AplusDraftPayload
 }
 
 function formatVariantLabel(draft: AplusDraftResponse): string {
-  const language = formatLanguageLabel((draft.variant_role === "translated" ? draft.target_language : draft.source_language) as never);
-  return draft.variant_role === "translated" ? `Translated (${language})` : `Original (${language})`;
+  const language = formatLanguageLabel(
+    (draft.variant_role === "translated" ? draft.target_language : draft.source_language) as never,
+  );
+  return draft.variant_role === "translated" ? `Translated (${language})` : `Source (${language})`;
 }
 
 function sortVariantDrafts(a: AplusDraftResponse, b: AplusDraftResponse): number {
@@ -137,6 +139,56 @@ function sortVariantDrafts(a: AplusDraftResponse, b: AplusDraftResponse): number
     return a.variant_role === "original" ? -1 : 1;
   }
   return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+}
+
+function getAvailableVariantDrafts(
+  selectedDraft: AplusDraftResponse | null,
+  drafts: AplusDraftResponse[],
+): AplusDraftResponse[] {
+  if (!selectedDraft) {
+    return [];
+  }
+
+  const productDrafts = drafts.filter((draft) => draft.product_id === selectedDraft.product_id);
+  const sameGroupDrafts = productDrafts
+    .filter((draft) => draft.variant_group_id === selectedDraft.variant_group_id)
+    .sort(sortVariantDrafts);
+  if (sameGroupDrafts.length > 1) {
+    return sameGroupDrafts;
+  }
+
+  const fallbackDrafts = [selectedDraft];
+  const latestSourceDraft = productDrafts
+    .filter(
+      (draft) =>
+        draft.variant_role === "original" && draft.target_language === selectedDraft.source_language,
+    )
+    .sort(sortVariantDrafts)[0];
+  if (latestSourceDraft) {
+    fallbackDrafts.push(latestSourceDraft);
+  }
+
+  const translatedSiblings = productDrafts
+    .filter(
+      (draft) =>
+        draft.variant_role === "translated" && draft.source_language === selectedDraft.source_language,
+    )
+    .sort(sortVariantDrafts);
+  fallbackDrafts.push(...translatedSiblings);
+
+  return Array.from(new Map(fallbackDrafts.map((draft) => [draft.id, draft])).values()).sort(
+    sortVariantDrafts,
+  );
+}
+
+function getPreferredEditableDraft(
+  selectedDraft: AplusDraftResponse,
+  drafts: AplusDraftResponse[],
+): AplusDraftResponse {
+  const sourceDraft = getAvailableVariantDrafts(selectedDraft, drafts).find(
+    (draft) => draft.variant_role === "original",
+  );
+  return sourceDraft ?? selectedDraft;
 }
 
 function getOptimizationSuggestions(
@@ -446,11 +498,7 @@ export function AplusStudioPage() {
   const generationSourceLanguage = selectedDraft?.source_language ?? sourceLanguage;
   const generationTargetLanguage = selectedDraft?.target_language ?? targetLanguage;
   const generationAutoTranslate = selectedDraft?.auto_translate ?? autoTranslate;
-  const availableVariantDrafts = selectedDraft
-    ? drafts
-        .filter((draft) => draft.variant_group_id === selectedDraft.variant_group_id)
-        .sort(sortVariantDrafts)
-    : [];
+  const availableVariantDrafts = getAvailableVariantDrafts(selectedDraft, drafts);
   const selectedDraftPayload = getEditablePayload(selectedDraft);
   const hasUnsavedChanges =
     selectedDraft !== null &&
@@ -518,7 +566,7 @@ export function AplusStudioPage() {
           hasBootstrappedStudioRef.current = true;
 
           if (draftsResponse.items[0]) {
-            const newestDraft = draftsResponse.items[0];
+            const newestDraft = getPreferredEditableDraft(draftsResponse.items[0], draftsResponse.items);
             setSelectedDraftId(newestDraft.id);
             setSelectedProductId(newestDraft.product_id);
             setBrandTone(newestDraft.brand_tone ?? "");
@@ -715,11 +763,12 @@ export function AplusStudioPage() {
       const draftsResponse = await getAplusDrafts(token);
       setDrafts(draftsResponse.items);
       const nextDraft = draftsResponse.items.find((item) => item.id === draft.id) ?? draft;
-      selectDraft(nextDraft);
+      const preferredDraft = getPreferredEditableDraft(nextDraft, draftsResponse.items);
+      selectDraft(preferredDraft);
       setImprovementPreview(null);
       setStatusMessage(
         autoTranslate
-          ? `Draft generated in ${formatLanguageLabel(sourceLanguage)} and translated into ${formatLanguageLabel(effectiveTargetLanguage)}.`
+          ? `Draft generated in ${formatLanguageLabel(sourceLanguage)} with a translated variant in ${formatLanguageLabel(effectiveTargetLanguage)}. You are now editing the source language draft.`
           : `Draft generated in ${formatLanguageLabel(sourceLanguage)}. Review and refine it before validation.`,
       );
     } catch (generateError) {
@@ -1497,6 +1546,11 @@ export function AplusStudioPage() {
                   <div className="mt-4 space-y-2">
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Language variants</p>
                     <div className="flex flex-wrap gap-2">
+                      {availableVariantDrafts.length === 0 ? (
+                        <span className="rounded-full border border-white/10 px-3 py-2 text-xs text-slate-400">
+                          Only one language variant is currently available.
+                        </span>
+                      ) : null}
                       {availableVariantDrafts.map((draft) => (
                         <button
                           key={draft.id}
