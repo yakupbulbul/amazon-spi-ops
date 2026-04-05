@@ -1,57 +1,186 @@
 # Amazon Seller Ops
 
-Production-minded full-stack application for Amazon seller operations. The current build includes:
+Amazon Seller Ops is a production-minded Amazon seller operations dashboard and Amazon SP-API admin platform. It combines catalog import, inventory monitoring, listing mutations, A+ content generation, AI-assisted content workflows, Slack notifications, and an operational web dashboard into one system.
 
-- Amazon seller catalog import via SP-API Listings Items
-- inventory monitoring with manual sync and low-stock alerts
-- price and stock mutation workflows with audit logs
-- OpenAI-backed A+ draft generation and publish-payload preview
-- Slack notification queueing, worker delivery, and history UI
-- responsive admin dashboard, products, inventory, notifications, settings, and A+ Studio pages
+It is designed as a portfolio-grade full-stack project that demonstrates marketplace operations tooling, async workflows, third-party integrations, and modern admin UX for Amazon seller teams.
+
+## What This Project Demonstrates
+
+- full-stack product architecture across React, FastAPI, PostgreSQL, Redis, and Docker
+- async workflows for notifications, background processing, and publish lifecycle handling
+- third-party integrations with Amazon SP-API, OpenAI, and Slack
+- AI-assisted A+ content generation, improvement, image workflows, and publish preparation
+- operational dashboard UX for seller catalog, inventory, pricing, stock, and content operations
+
+## Screenshots
+
+### Login
+![Login](docs/screenshots/login.png)
+
+### Dashboard
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Products
+![Products](docs/screenshots/products.png)
+
+### Inventory
+![Inventory](docs/screenshots/inventory.png)
+
+### A+ Content Studio
+![A+ Content Studio](docs/screenshots/aplus-studio.png)
+
+### Notifications
+![Notifications](docs/screenshots/notifications.png)
+
+### Settings
+![Settings](docs/screenshots/settings.png)
+
+## Features
+
+- Amazon SP-API catalog import for real seller listings
+- inventory monitoring with low-stock detection and sync workflows
+- price and stock update workflows with audit logging
+- OpenAI-backed A+ draft generation with multilingual support
+- targeted A+ draft improvement flows based on optimization scores
+- A+ image workflows for uploaded, generated, and reusable assets
+- Amazon A+ publish preparation and supported live publish subset
+- Slack operational notifications with structured Block Kit messages
+- responsive admin UI for dashboard, products, inventory, A+ Studio, notifications, and settings
+
+## Current Product Areas
+
+- `/`
+  dashboard summary
+- `/products`
+  product catalog, search, mutations, and Amazon import controls
+- `/inventory`
+  inventory visibility, sync, alerts, and stock health
+- `/aplus`
+  A+ Studio for generation, editing, optimization, preview, and publish flow
+- `/notifications`
+  notification history and Slack delivery visibility
+- `/settings`
+  environment and integration-related controls
+
+## Tech Stack
+
+### Backend
+- FastAPI
+- SQLAlchemy
+- PostgreSQL
+- Redis
+- Dramatiq
+- OpenAI API
+- Amazon Selling Partner API
+
+### Frontend
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- Lucide React
+
+### Infra
+- Docker Compose
+- Nginx
 
 ## Project Structure
 
 ```text
 amazon-spi/
-├── backend/                # FastAPI app, worker bootstrap, tests
-├── frontend/               # React + Vite + Tailwind admin UI
+├── backend/                # FastAPI app, workers, tests, migrations
+├── frontend/               # React + Vite admin UI
 ├── nginx/                  # Reverse proxy configuration
-├── infra/                  # Reserved for later infrastructure assets
+├── docs/                   # Runbooks, screenshots, review notes
+├── infra/                  # Reserved for future infrastructure assets
 ├── .env.example
-├── .gitignore
-├── Makefile
-├── README.md
-└── docker-compose.yml
+├── docker-compose.yml
+└── README.md
 ```
 
-## Environment Variables
+## Quick Start
 
-Copy the template before running locally:
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/yakupbulbul/amazon-spi-ops.git
+cd amazon-spi-ops
+```
+
+### 2. Create your environment file
 
 ```bash
 cp .env.example .env
 ```
 
-Supported variables:
+### 3. Start the full stack with Docker
 
+```bash
+docker compose up --build -d
+```
+
+### 4. Open the app
+
+- [http://127.0.0.1:8080](http://127.0.0.1:8080)
+
+Then sign in with the admin credentials configured in your local `.env`.
+
+## Docker Services
+
+Defined in [docker-compose.yml](docker-compose.yml):
+
+- `postgres`
+- `redis`
+- `backend`
+- `worker`
+- `frontend`
+- `nginx`
+
+Useful commands:
+
+```bash
+docker compose ps
+docker compose logs -f backend
+docker compose logs -f worker
+docker compose down
+```
+
+## Environment Variables
+
+Create `.env` from `.env.example` and set the values you need.
+
+Core application values:
+
+- `SECRET_KEY`
+- `APP_ENV`
 - `NGINX_PORT`
-- `LWA_CLIENT_ID`
-- `LWA_CLIENT_SECRET`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `LWA_REFRESH_TOKEN`
-- `MARKETPLACE_ID`
-- `SELLER_ID`
+- `DATABASE_URL`
+- `REDIS_URL`
+
+OpenAI integration:
+
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 - `OPENAI_IMAGE_MODEL`
+
+Amazon SP-API integration:
+
+- `LWA_CLIENT_ID`
+- `LWA_CLIENT_SECRET`
+- `LWA_REFRESH_TOKEN`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `MARKETPLACE_ID`
+- `SELLER_ID`
+
+A+ publish controls:
+
 - `APLUS_LIVE_PUBLISH_ENABLED`
 - `APLUS_UPLOAD_MAX_BYTES`
+
+Slack integration:
+
 - `SLACK_WEBHOOK_URL`
-- `DATABASE_URL`
-- `REDIS_URL`
-- `SECRET_KEY`
-- `APP_ENV`
 
 ## Local Development
 
@@ -66,13 +195,6 @@ pip install -e ".[dev]"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Health endpoints:
-
-```bash
-curl http://127.0.0.1:8000/api/health
-curl http://127.0.0.1:8000/api/health/ready
-```
-
 ### Frontend
 
 ```bash
@@ -81,35 +203,9 @@ npm install
 npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
-The frontend uses same-origin `/api` requests by default. For local Vite development, the dev
-server proxies `/api` to `http://localhost:8000`, so the browser does not need CORS enabled. In
-other environments, set `VITE_API_BASE_URL` only if you need to override that default.
+The Vite dev server proxies `/api` to `http://localhost:8000` by default.
 
-## Current Application Surface
-
-Default Docker URL:
-
-```text
-http://127.0.0.1:8080
-```
-
-Default admin login for local development:
-
-```text
-admin@example.com
-change-me-admin
-```
-
-Key UI routes:
-
-- `/`
-- `/products`
-- `/aplus`
-- `/inventory`
-- `/notifications`
-- `/settings`
-
-Key API routes currently wired:
+## Key API Routes
 
 - `GET /api/health`
 - `GET /api/health/ready`
@@ -130,33 +226,56 @@ Key API routes currently wired:
 - `POST /api/aplus/publish`
 - `GET /api/events`
 - `POST /api/notifications/slack/test`
+- `POST /api/notifications/orders/test`
 
-## Integration Notes
+## Amazon A+ Support
 
-Amazon SP-API:
+Current real publish subset:
 
-- catalog import uses the configured `MARKETPLACE_ID` and `SELLER_ID`
-- live inventory sync uses the configured marketplace
-- price and stock mutations call the live listing adapter when credentials are present
+- `hero` -> `STANDARD_HEADER_IMAGE_TEXT`
+- `feature` -> `STANDARD_SINGLE_IMAGE_HIGHLIGHTS`
+- `faq` -> `STANDARD_TEXT`
 
-OpenAI:
+Not yet supported for real Amazon publish:
 
-- A+ generation uses `OPENAI_API_KEY`
-- default model is `gpt-4o-mini`
-- A+ image generation uses `OPENAI_IMAGE_MODEL`
-- if `OPENAI_API_KEY` is unset, the backend returns a deterministic mock draft for local development
+- `comparison`
 
-A+ live publish:
+The A+ Studio currently supports:
 
-- keep `APLUS_LIVE_PUBLISH_ENABLED=false` in the default local `.env`
-- use `.env.live.amazon.example` as the starting point for a dedicated live seller-account test profile
-- follow [docs/aplus_live_publish_test.md](/Users/yakupbulbul/Documents/codex/amazon-spi/docs/aplus_live_publish_test.md) for the exact end-to-end validation flow
+- multilingual draft generation
+- source/translated draft variants
+- optimization scoring
+- targeted rewrite improvements
+- image upload / asset reuse / AI image generation
+- preview and publish-readiness workflows
+- publish lifecycle states:
+  - `draft`
+  - `assets prepared`
+  - `validated`
+  - `submitted`
+  - `in review`
+  - `approved`
+  - `rejected`
 
-Slack:
+For live seller-account testing, use:
 
-- Slack delivery is processed asynchronously by the Dramatiq worker
-- if `SLACK_WEBHOOK_URL` is unset, notification attempts are recorded as failed with a clear error message
-- use the Settings page to queue a test notification and inspect the stored result
+- [docs/aplus_live_publish_test.md](docs/aplus_live_publish_test.md)
+
+## Slack Notifications
+
+Slack delivery is processed asynchronously by the worker.
+
+Supported structured notification types include:
+
+- A+ submitted / approved / rejected
+- new order
+- low stock
+- price update
+- stock update
+- Slack test notification
+- system error
+
+If `SLACK_WEBHOOK_URL` is not set, delivery attempts are recorded as failed with a clear error message.
 
 ## Quality Checks
 
@@ -178,78 +297,16 @@ npm run lint
 npm run build
 ```
 
-## Docker
+## Security Notes
 
-Start the full stack:
+Before publishing this repository publicly:
 
-```bash
-docker compose up --build
-```
+- do not commit real `.env` files
+- rotate any credentials previously used in local development
+- keep `APLUS_LIVE_PUBLISH_ENABLED=false` by default
+- avoid exposing PostgreSQL or Redis directly on public servers
+- put TLS and a real reverse proxy in front of the app in production
 
-Run in the background:
+## License
 
-```bash
-docker compose up --build -d
-```
-
-Stop the stack:
-
-```bash
-docker compose down
-```
-
-Services defined in Compose:
-
-- `postgres`
-- `redis`
-- `backend`
-- `worker`
-- `frontend`
-- `nginx`
-
-By default, Nginx is published on `http://localhost:8080`. Override `NGINX_PORT` in `.env` if you
-need a different host port.
-
-## Verification Notes
-
-Verified in this environment:
-
-- backend `ruff check .`
-- backend `mypy app`
-- backend live health requests to `/api/health` and `/api/health/ready`
-- frontend `npm run lint`
-- frontend `npm run build`
-- `docker compose config`
-- `docker compose up --build -d`
-- live Amazon catalog import through `/api/products/import`
-- live A+ draft generation, validation, and publish-payload preview
-- notification queueing through `/api/notifications/slack/test`
-
-Host-side `pytest` may require local installation of `psycopg` if you are not running tests inside
-the project backend environment or container.
-
-## Real Amazon A+ Publish Subset
-
-Currently supported for real seller-account submit:
-
-- `hero` -> `STANDARD_HEADER_IMAGE_TEXT`
-- `feature` -> `STANDARD_SINGLE_IMAGE_HIGHLIGHTS`
-- `faq` -> `STANDARD_TEXT`
-
-Not yet supported for real Amazon publish:
-
-- `comparison`
-
-The Studio now tracks the latest publish job lifecycle and surfaces:
-
-- `draft`
-- `assets prepared`
-- `validated`
-- `submitted`
-- `in review`
-- `approved`
-- `rejected`
-
-Use the dedicated live runbook for the first end-to-end seller test:
-
-- [docs/aplus_live_publish_test.md](/Users/yakupbulbul/Documents/codex/amazon-spi/docs/aplus_live_publish_test.md)
+This project is available under the MIT License. See [LICENSE](LICENSE).

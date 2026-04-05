@@ -44,7 +44,7 @@ Before starting one live test:
 Create the dedicated live env file:
 
 ```bash
-cd /Users/yakupbulbul/Documents/codex/amazon-spi
+cd /path/to/amazon-spi
 cp .env.live.amazon.example .env.live.amazon
 ```
 
@@ -53,14 +53,14 @@ Fill in the live Amazon credentials and seller values in `.env.live.amazon`.
 Start the stack with the live profile:
 
 ```bash
-cd /Users/yakupbulbul/Documents/codex/amazon-spi
+cd /path/to/amazon-spi
 docker compose --env-file .env.live.amazon up -d --build backend worker frontend nginx postgres redis
 ```
 
 Verify the backend is using the live profile:
 
 ```bash
-cd /Users/yakupbulbul/Documents/codex/amazon-spi
+cd /path/to/amazon-spi
 docker compose --env-file .env.live.amazon exec backend printenv APLUS_LIVE_PUBLISH_ENABLED
 ```
 

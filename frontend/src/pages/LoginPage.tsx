@@ -8,8 +8,8 @@ export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("change-me-admin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,9 +41,8 @@ export function LoginPage() {
             Secure admin access for inventory, listing, and A+ workflows.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300">
-            Phase 2 adds backend-backed authentication and protected routes. Use the bootstrapped
-            local admin account to access the dashboard while Amazon, OpenAI, and Slack workflows
-            are implemented in later phases.
+            Sign in to access the seller operations dashboard, inventory workflows, listing controls,
+            Slack-connected notifications, and Amazon A+ content tools.
           </p>
         </section>
 
@@ -63,7 +62,7 @@ export function LoginPage() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
-                  placeholder="admin@example.com"
+                  placeholder="Enter your admin email"
                   autoComplete="email"
                 />
               </div>
@@ -101,8 +100,8 @@ export function LoginPage() {
           </form>
 
           <div className="mt-6 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
-            Local development defaults:
-            <div className="mt-2 font-mono text-xs text-slate-300">admin@example.com / change-me-admin</div>
+            Use the admin account configured for your environment. For local development, set the
+            credentials in <code className="font-mono text-xs text-slate-300">.env</code>.
           </div>
         </section>
       </div>
